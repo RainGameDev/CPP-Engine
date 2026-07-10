@@ -1,9 +1,10 @@
 #include "rendering/vulkan_application.h"
 #include "glm/ext/vector_float3.hpp"
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
 #include <GLFW/glfw3.h>
-#include <cstdio>
-#include <iostream>
 #include <print>
 
 void VulkanApplication::run() {
@@ -48,6 +49,8 @@ void VulkanApplication::initVulkan() {
   createCubeMesh();
   createCommandBuffer();
   createSyncObjects();
+
+  initImGui();
 }
 
 void VulkanApplication::mainLoop() {
@@ -62,11 +65,32 @@ void VulkanApplication::mainLoop() {
 
     updateUniformBuffer(currentFrame);
 
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    ImGui::Begin("Debug", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoFocusOnAppearing |
+                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBackground |
+                     ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+    glm::vec3 position = camera.getPosition();
+    ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y,
+                position.z);
+    ImGui::End();
+
+    ImGui::Render();
+
     drawFrame();
   }
 }
 
 void VulkanApplication::cleanup() {
+  cleanupImGui();
   glfwDestroyWindow(window);
   glfwTerminate();
 }

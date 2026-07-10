@@ -71,6 +71,8 @@ private:
   vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
   vk::raii::DescriptorSets descriptorSets = nullptr;
 
+  vk::raii::DescriptorPool imguiPool = nullptr;
+
   static double lastX, lastY;
   static bool firstMouse;
   Camera camera;
@@ -129,6 +131,9 @@ private:
 
   void createSyncObjects();
   void drawFrame();
+
+  void initImGui();
+  void cleanupImGui();
 
   void processInput(GLFWwindow *window, Camera &camera, float deltaTime);
   static void mouse_callback(GLFWwindow *window, double xpos, double ypos);

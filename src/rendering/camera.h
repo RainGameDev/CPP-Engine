@@ -2,7 +2,6 @@
 
 class Camera {
 private:
-  glm::vec3 position;
   glm::vec3 front;
   glm::vec3 up;
   glm::vec3 right;
@@ -17,6 +16,8 @@ private:
   float fov;
 
 public:
+  glm::vec3 position;
+
   Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, -3.0f),
          glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f), float yaw = -90.0f,
          float pitch = 0.0f);

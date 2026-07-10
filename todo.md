@@ -11,7 +11,8 @@
 - [-] Better renderer
   - [x] Camera
   - [x] Aspect ratio
-  - [ ] Vertex buffers
-  - [ ] Index buffers
+  - [x] Vertex buffers
+  - [x] Index buffers
+  - [x] ImGui
   - [ ] Textures
   - [ ] Materials

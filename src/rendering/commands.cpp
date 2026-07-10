@@ -1,3 +1,5 @@
+#include "imgui.h"
+#include "imgui_impl_vulkan.h"
 #include "rendering/vulkan_application.h"
 
 #include <cstdint>
@@ -55,11 +57,16 @@ void VulkanApplication::recordCommandBuffer(uint32_t imageIndex,
                       static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
   commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 
+  // render all meshes
   for (auto &mesh : meshes) {
     commandBuffer.bindVertexBuffers(0, {*mesh.vertexBuffer}, {0});
     commandBuffer.bindIndexBuffer(*mesh.indexBuffer, 0, vk::IndexType::eUint32);
     commandBuffer.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
   }
+
+  // render imgui
+  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer,
+                                  VK_NULL_HANDLE);
 
   commandBuffer.endRendering();
 
