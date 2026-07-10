@@ -1,0 +1,11 @@
+CompileFlags:
+  Add: [-std=c++23, -Wall, -Wextra, -Wpedantic, -Werror]
+  Remove: [-Wunused-parameter]
+
+Diagnostics:
+  UnusedIncludes: Strict
+
+InlayHints:
+  Enabled: true
+  ParameterNames: true
+  DeducedTypes: true

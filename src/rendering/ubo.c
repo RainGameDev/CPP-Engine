@@ -1,0 +1,98 @@
+#include "rendering/vulkan_application.h"
+
+#include <chrono>
+#include <glm/ext/matrix_transform.hpp>
+
+void VulkanApplication::createUniformBuffers() {
+  vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+  // Create the buffer
+  vk::BufferCreateInfo bufferInfo{.size = bufferSize,
+                                  .usage =
+                                      vk::BufferUsageFlagBits::eUniformBuffer,
+                                  .sharingMode = vk::SharingMode::eExclusive};
+  for (size_t i = 0; i < maxConcurrentFrames; i++) {
+    uniformBuffers[i].buffer = vk::raii::Buffer(device, bufferInfo);
+
+    // Allocate and bind memory
+    vk::MemoryRequirements memRequirements =
+        uniformBuffers[i].buffer.getMemoryRequirements();
+
+    vk::MemoryAllocateInfo allocInfo{
+        .allocationSize = memRequirements.size,
+        .memoryTypeIndex =
+            findMemoryType(memRequirements.memoryTypeBits,
+                           vk::MemoryPropertyFlagBits::eHostVisible |
+                               vk::MemoryPropertyFlagBits::eHostCoherent)};
+
+    uniformBuffers[i].memory = vk::raii::DeviceMemory(device, allocInfo);
+    uniformBuffers[i].buffer.bindMemory(*uniformBuffers[i].memory, 0);
+
+    // Persistently map the buffer memory
+    uniformBuffers[i].mapped =
+        uniformBuffers[i].memory.mapMemory(0, bufferSize);
+  }
+}
+
+void VulkanApplication::createDescriptorSetLayout() {
+  vk::DescriptorSetLayoutBinding uboLayoutBinding{
+      .binding = 0,
+      .descriptorType = vk::DescriptorType::eUniformBuffer,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eVertex,
+      .pImmutableSamplers = nullptr};
+
+  vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount = 1,
+                                               .pBindings = &uboLayoutBinding};
+
+  descriptorSetLayout = device.createDescriptorSetLayout(layoutInfo);
+}
+
+void VulkanApplication::createDescriptorSets() {
+  std::array<vk::DescriptorSetLayout, maxConcurrentFrames> layouts{};
+  layouts.fill(*descriptorSetLayout);
+
+  vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool = *descriptorPool,
+                                          .descriptorSetCount =
+                                              maxConcurrentFrames,
+                                          .pSetLayouts = layouts.data()};
+
+  descriptorSets = device.allocateDescriptorSets(allocInfo);
+
+  vk::DescriptorBufferInfo bufferInfo{.offset = 0,
+                                      .range = sizeof(UniformBufferObject)};
+
+  for (size_t i = 0; i < maxConcurrentFrames; i++) {
+    bufferInfo.buffer = *uniformBuffers[i].buffer;
+
+    vk::WriteDescriptorSet descriptorWrite{
+        .dstSet = descriptorSets[i],
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .pBufferInfo = &bufferInfo};
+
+    device.updateDescriptorSets(descriptorWrite, nullptr);
+  }
+}
+
+void VulkanApplication::updateUniformBuffer(uint32_t currentFrame) {
+  static auto startTime = std::chrono::high_resolution_clock::now();
+  auto currentTime = std::chrono::high_resolution_clock::now();
+  float time = std::chrono::duration<float, std::chrono::seconds::period>(
+                   currentTime - startTime)
+                   .count();
+
+  UniformBufferObject ubo{};
+
+  ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(45.0f),
+                          glm::vec3(0.0f, 1.0f, 0.0f));
+  ubo.view = camera.getViewMatrix();
+  ubo.proj = camera.getProjectionMatrix(swapChainExtent.width /
+                                        (float)swapChainExtent.height);
+
+  /// Flipped for vulkan
+  ubo.proj[1][1] *= -1;
+
+  memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
+}
