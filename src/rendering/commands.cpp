@@ -1,5 +1,6 @@
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
+#include "assets/material_loader.h"
 #include "rendering/vulkan_application.h"
 
 #include <cstdint>
@@ -59,11 +60,23 @@ void VulkanApplication::recordCommandBuffer(uint32_t imageIndex,
 
   // render all meshes
   for (auto &mesh : meshes) {
+    auto &mat = mesh.material;
+
+    commandBuffer.bindDescriptorSets(
+        vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
+        {*descriptorSets[currentFrame], *mat->descriptorSet}, nullptr);
+
+    MaterialPushConstants pc{.baseColorFactor = mat->baseColorFactor,
+                             .metallicFactor = mat->metallicFactor,
+                             .roughnessFactor = mat->roughnessFactor};
+    commandBuffer.pushConstants(*pipelineLayout,
+                                vk::ShaderStageFlagBits::eFragment, 0,
+                                sizeof(pc), &pc);
+
     commandBuffer.bindVertexBuffers(0, {*mesh.vertexBuffer}, {0});
     commandBuffer.bindIndexBuffer(*mesh.indexBuffer, 0, vk::IndexType::eUint32);
     commandBuffer.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
   }
-
   // render imgui
   ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer,
                                   VK_NULL_HANDLE);

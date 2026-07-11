@@ -1,7 +1,9 @@
 
+#include "assets/material_loader.h"
 #include "assets/shader_loader.h"
 #include "rendering/vertex.h"
 #include "rendering/vulkan_application.h"
+#include "vulkan/vulkan.hpp"
 
 #include <cstdint>
 #include <fstream>
@@ -72,10 +74,21 @@ void VulkanApplication::createGraphicsPipeline() {
       .attachmentCount = 1,
       .pAttachments = &colorBlendAttachment};
 
-  vk::PipelineLayoutCreateInfo pipelineLayoutInfo{.setLayoutCount = 1,
-                                                  .pSetLayouts =
-                                                      &*descriptorSetLayout,
-                                                  .pushConstantRangeCount = 0};
+  std::array<vk::DescriptorSetLayout, 2> setLayouts = {descriptorSetLayout,
+                                                       materialSetLayout};
+
+  vk::PushConstantRange pushRange{.stageFlags =
+                                      vk::ShaderStageFlagBits::eFragment,
+                                  .offset = 0,
+                                  .size = sizeof(MaterialPushConstants)};
+
+  vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
+      .setLayoutCount = 2,
+      .pSetLayouts = setLayouts.data(),
+      .pushConstantRangeCount = 1,
+      .pPushConstantRanges = &pushRange};
+
+  pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 
   pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 

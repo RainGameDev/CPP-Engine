@@ -1,3 +1,4 @@
+#pragma once
 #include "asset_loader.h"
 #include <string>
 #include <vector>

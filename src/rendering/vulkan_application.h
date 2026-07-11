@@ -70,6 +70,7 @@ private:
 
   vk::raii::DescriptorPool descriptorPool = nullptr;
   vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
+  vk::raii::DescriptorSetLayout materialSetLayout = nullptr;
   vk::raii::DescriptorSets descriptorSets = nullptr;
 
   vk::raii::DescriptorPool imguiPool = nullptr;

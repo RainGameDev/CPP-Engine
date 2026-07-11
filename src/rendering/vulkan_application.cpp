@@ -1,4 +1,5 @@
 #include "rendering/vulkan_application.h"
+#include "assets/material_loader.h"
 #include "assets/shader_loader.h"
 #include "assets/texture_loader.h"
 #include "glm/ext/vector_float3.hpp"
@@ -25,7 +26,7 @@ void VulkanApplication::initVulkan() {
   glfwSetWindowUserPointer(window, this);
   glfwSetCursorPosCallback(window, mouse_callback);
   glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
   if (glfwRawMouseMotionSupported())
     glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
@@ -51,6 +52,11 @@ void VulkanApplication::initVulkan() {
   assetManager.loadDirectory("assets/textures");
 
   createDescriptorPool();
+  assetManager.addLoader(std::make_unique<MaterialLoader>(
+      device, physicalDevice, materialSetLayout, descriptorPool,
+      commandPool, queue, assetManager));
+  assetManager.loadDirectory("assets/materials");
+
   createUniformBuffers();
   createDescriptorSets();
   createGraphicsPipeline();
@@ -165,15 +171,17 @@ uint32_t VulkanApplication::findMemoryType(uint32_t typeFilter,
 }
 
 void VulkanApplication::createDescriptorPool() {
+  constexpr uint32_t maxMaterials = 64;
+
   std::array<vk::DescriptorPoolSize, 2> poolSizes = {
       vk::DescriptorPoolSize{vk::DescriptorType::eUniformBuffer,
                              maxConcurrentFrames},
       vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler,
-                             maxConcurrentFrames}};
+                             maxMaterials * 3}};
 
   vk::DescriptorPoolCreateInfo poolInfo{
       .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-      .maxSets = maxConcurrentFrames,
+      .maxSets = maxConcurrentFrames + maxMaterials,
       .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
       .pPoolSizes = poolSizes.data()};
 

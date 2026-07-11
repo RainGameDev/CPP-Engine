@@ -40,9 +40,9 @@ public:
       if (!entry.is_regular_file())
         continue;
 
-      std::string ext = entry.path().extension().string();
+      std::string filename = entry.path().filename().string();
       for (const auto &supported : extensions()) {
-        if (ext == supported) {
+        if (filename.ends_with(supported)) {
           std::string name = entry.path().stem().string();
           assets[name] = loadAsset(entry.path().string());
         }

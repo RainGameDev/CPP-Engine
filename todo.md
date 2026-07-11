@@ -14,5 +14,5 @@
   - [x] Vertex buffers
   - [x] Index buffers
   - [x] ImGui
-  - [ ] Textures
+  - [x] Textures
   - [ ] Materials

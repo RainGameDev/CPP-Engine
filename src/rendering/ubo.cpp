@@ -1,9 +1,9 @@
 #include "rendering/vulkan_application.h"
 
+#include "assets/material_loader.h"
 #include <chrono>
+#include <cstdint>
 #include <glm/ext/matrix_transform.hpp>
-
-#include "assets/texture_loader.h"
 
 void VulkanApplication::createUniformBuffers() {
   vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -43,72 +43,58 @@ void VulkanApplication::createDescriptorSetLayout() {
       .stageFlags = vk::ShaderStageFlagBits::eVertex,
       .pImmutableSamplers = nullptr};
 
-  vk::DescriptorSetLayoutBinding samplerLayoutBinding{
-      .binding = 1,
-      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eFragment,
-      .pImmutableSamplers = nullptr};
+  descriptorSetLayout = device.createDescriptorSetLayout(
+      {.bindingCount = 1, .pBindings = &uboLayoutBinding});
 
-  std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {
-      uboLayoutBinding, samplerLayoutBinding};
+  std::array<vk::DescriptorSetLayoutBinding, 3> materialBindings = {{
+      {.binding = 0,
+       .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+       .descriptorCount = 1,
+       .stageFlags = vk::ShaderStageFlagBits::eFragment},
+      {.binding = 1,
+       .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+       .descriptorCount = 1,
+       .stageFlags = vk::ShaderStageFlagBits::eFragment},
+      {.binding = 2,
+       .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+       .descriptorCount = 1,
+       .stageFlags = vk::ShaderStageFlagBits::eFragment},
+  }};
 
-  vk::DescriptorSetLayoutCreateInfo layoutInfo{
-      .bindingCount = static_cast<uint32_t>(bindings.size()),
-      .pBindings = bindings.data()};
-
-  descriptorSetLayout = device.createDescriptorSetLayout(layoutInfo);
+  materialSetLayout = device.createDescriptorSetLayout(
+      {.bindingCount = static_cast<uint32_t>(materialBindings.size()),
+       .pBindings = materialBindings.data()});
 }
 
 void VulkanApplication::createDescriptorSets() {
   std::array<vk::DescriptorSetLayout, maxConcurrentFrames> layouts{};
   layouts.fill(*descriptorSetLayout);
 
-  vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool = *descriptorPool,
-                                          .descriptorSetCount =
-                                              maxConcurrentFrames,
-                                          .pSetLayouts = layouts.data()};
+  vk::DescriptorSetAllocateInfo allocInfo{
+      .descriptorPool = *descriptorPool,
+      .descriptorSetCount = maxConcurrentFrames,
+      .pSetLayouts = layouts.data()};
 
   descriptorSets = device.allocateDescriptorSets(allocInfo);
-
-  auto *textures = assetManager.getLoader<TextureAsset>();
-  auto &tex = textures->getAsset("dirt_albedo");
 
   for (size_t i = 0; i < maxConcurrentFrames; i++) {
     vk::DescriptorBufferInfo bufferInfo{.buffer = *uniformBuffers[i].buffer,
                                         .offset = 0,
                                         .range = sizeof(UniformBufferObject)};
 
-    vk::DescriptorImageInfo imageInfo{
-        .sampler = *tex.sampler,
-        .imageView = *tex.imageView,
-        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+    vk::WriteDescriptorSet descriptorWrite{
+        .dstSet = descriptorSets[i],
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .pBufferInfo = &bufferInfo};
 
-    std::array<vk::WriteDescriptorSet, 2> descriptorWrites{{
-        {.dstSet = descriptorSets[i],
-         .dstBinding = 0,
-         .dstArrayElement = 0,
-         .descriptorCount = 1,
-         .descriptorType = vk::DescriptorType::eUniformBuffer,
-         .pBufferInfo = &bufferInfo},
-        {.dstSet = descriptorSets[i],
-         .dstBinding = 1,
-         .dstArrayElement = 0,
-         .descriptorCount = 1,
-         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-         .pImageInfo = &imageInfo},
-    }};
-
-    device.updateDescriptorSets(descriptorWrites, nullptr);
+    device.updateDescriptorSets(descriptorWrite, nullptr);
   }
 }
 
 void VulkanApplication::updateUniformBuffer(uint32_t currentFrame) {
-  static auto startTime = std::chrono::high_resolution_clock::now();
-  auto currentTime = std::chrono::high_resolution_clock::now();
-  float time = std::chrono::duration<float, std::chrono::seconds::period>(
-                   currentTime - startTime)
-                   .count();
 
   UniformBufferObject ubo{};
 
