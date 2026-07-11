@@ -6,16 +6,45 @@
 #include "vulkan/vulkan.hpp"
 
 #include <cstdint>
-#include <fstream>
+#include <iostream>
+#include <print>
 #include <stdexcept>
 #include <vector>
 
-void VulkanApplication::createGraphicsPipeline() {
+void VulkanApplication::createGraphicsPipelineLayout() {
+  std::array<vk::DescriptorSetLayout, 2> setLayouts = {descriptorSetLayout,
+                                                       materialSetLayout};
 
+  vk::PushConstantRange pushRange{.stageFlags =
+                                      vk::ShaderStageFlagBits::eVertex |
+                                      vk::ShaderStageFlagBits::eFragment,
+                                  .offset = 0,
+                                  .size = sizeof(MaterialPushConstants)};
+
+  vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
+      .setLayoutCount = 2,
+      .pSetLayouts = setLayouts.data(),
+      .pushConstantRangeCount = 1,
+      .pPushConstantRanges = &pushRange};
+
+  pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
+}
+
+vk::Pipeline VulkanApplication::getOrCreatePipeline(const ShaderKey &key) {
+  if (auto it = graphicsPipelines.find(key); it != graphicsPipelines.end()) {
+    return **it->second;
+  }
+  createPipelineForKey(key);
+  return **graphicsPipelines[key];
+}
+
+void VulkanApplication::createPipelineForKey(const ShaderKey &key) {
   auto *shaders = assetManager.getLoader<ShaderAsset>();
 
-  auto &vertModule = shaders->getAsset("sdr_default_model.vert").module;
-  auto &fragModule = shaders->getAsset("sdr_default_model.frag").module;
+  std::cout << key.fragment + " " + key.vertex << std::endl;
+
+  auto &vertModule = shaders->getAsset(key.vertex).module;
+  auto &fragModule = shaders->getAsset(key.fragment).module;
 
   vk::PipelineShaderStageCreateInfo vertStageInfo{
       .stage = vk::ShaderStageFlagBits::eVertex,
@@ -26,17 +55,8 @@ void VulkanApplication::createGraphicsPipeline() {
       .module = fragModule,
       .pName = "main"};
 
-  vk::PipelineShaderStageCreateInfo shaderStages[] = {vertStageInfo,
-                                                      fragStageInfo};
-
-  vk::Viewport viewport{0.0f,
-                        0.0f,
-                        static_cast<float>(swapChainExtent.width),
-                        static_cast<float>(swapChainExtent.height),
-                        0.0f,
-                        1.0f};
-
-  vk::Rect2D scissor{vk::Offset2D{0, 0}, swapChainExtent};
+  std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages = {
+      vertStageInfo, fragStageInfo};
 
   std::vector<vk::DynamicState> dynamicStates = {vk::DynamicState::eViewport,
                                                  vk::DynamicState::eScissor};
@@ -46,9 +66,7 @@ void VulkanApplication::createGraphicsPipeline() {
       .pDynamicStates = dynamicStates.data()};
 
   vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1,
-                                                    .pViewports = &viewport,
-                                                    .scissorCount = 1,
-                                                    .pScissors = &scissor};
+                                                    .scissorCount = 1};
 
   vk::PipelineRasterizationStateCreateInfo rasterizer{
       .depthClampEnable = vk::False,
@@ -74,25 +92,6 @@ void VulkanApplication::createGraphicsPipeline() {
       .attachmentCount = 1,
       .pAttachments = &colorBlendAttachment};
 
-  std::array<vk::DescriptorSetLayout, 2> setLayouts = {descriptorSetLayout,
-                                                       materialSetLayout};
-
-  vk::PushConstantRange pushRange{.stageFlags =
-                                      vk::ShaderStageFlagBits::eVertex |
-                                      vk::ShaderStageFlagBits::eFragment,
-                                  .offset = 0,
-                                  .size = sizeof(MaterialPushConstants)};
-
-  vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
-      .setLayoutCount = 2,
-      .pSetLayouts = setLayouts.data(),
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &pushRange};
-
-  pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
-
-  pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
-
   vk::PipelineInputAssemblyStateCreateInfo inputAssembly{
       .topology = vk::PrimitiveTopology::eTriangleList};
 
@@ -110,7 +109,7 @@ void VulkanApplication::createGraphicsPipeline() {
                      vk::PipelineRenderingCreateInfo>
       pipelineCreateInfoChain = {
           {.stageCount = 2,
-           .pStages = shaderStages,
+           .pStages = shaderStages.data(),
            .pVertexInputState = &vertexInputInfo,
            .pInputAssemblyState = &inputAssembly,
            .pViewportState = &viewportState,
@@ -123,7 +122,10 @@ void VulkanApplication::createGraphicsPipeline() {
           {.colorAttachmentCount = 1,
            .pColorAttachmentFormats = &swapChainSurfaceFormat.format}};
 
-  graphicsPipeline = vk::raii::Pipeline(
+  auto pipeline = vk::raii::Pipeline(
       device, nullptr,
       pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
+
+  graphicsPipelines[key] =
+      std::make_unique<vk::raii::Pipeline>(std::move(pipeline));
 }

@@ -4,6 +4,7 @@
 #include "rendering/vulkan_application.h"
 
 #include <cstdint>
+#include <iostream>
 
 void VulkanApplication::createCommandPool() {
   vk::CommandPoolCreateInfo poolInfo{
@@ -46,20 +47,31 @@ void VulkanApplication::recordCommandBuffer(uint32_t imageIndex,
 
   commandBuffer.beginRendering(renderingInfo);
 
-  commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                             *graphicsPipeline);
-
-  commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                   *pipelineLayout, 0,
-                                   {*descriptorSets[currentFrame]}, nullptr);
-
-  commandBuffer.setViewport(
-      0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width),
-                      static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
-  commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
-
   // render all meshes
   for (auto &mesh : meshes) {
+
+    ShaderKey key;
+    if (mesh.material != nullptr) {
+      key = {mesh.material->vertexShader, mesh.material->fragmentShader};
+    } else {
+      key = {"sdr_default_model.vert", "sdr_default_model.frag"};
+    }
+
+    auto pipeline = getOrCreatePipeline(key);
+
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+
+    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                     *pipelineLayout, 0,
+                                     {*descriptorSets[currentFrame]}, nullptr);
+
+    commandBuffer.setViewport(
+        0,
+        vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width),
+                     static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+    commandBuffer.setScissor(0,
+                             vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+
     auto &mat = mesh.material;
 
     commandBuffer.bindDescriptorSets(

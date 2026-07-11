@@ -59,7 +59,7 @@ void VulkanApplication::initVulkan() {
 
   createUniformBuffers();
   createDescriptorSets();
-  createGraphicsPipeline();
+  createGraphicsPipelineLayout();
 
   createCubeMesh();
   createCommandBuffer();

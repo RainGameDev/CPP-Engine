@@ -12,6 +12,7 @@ target_compile_definitions(engine_lib PUBLIC VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
 
 add_executable(engine main.cpp)
 target_link_libraries(engine PRIVATE engine_lib glfw)
+target_include_directories(engine PRIVATE ${CMAKE_SOURCE_DIR}/src)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLFW glfw3)
 

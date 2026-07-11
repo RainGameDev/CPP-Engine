@@ -16,7 +16,8 @@ struct MaterialPushConstants {
 };
 
 struct MaterialAsset {
-  std::string shader;
+  std::string vertexShader;
+  std::string fragmentShader;
   std::string albedoPath;
   std::string normalPath;
   std::string rmaosPath;
@@ -45,8 +46,7 @@ public:
                  vk::raii::PhysicalDevice &physicalDevice,
                  vk::DescriptorSetLayout materialLayout,
                  vk::raii::DescriptorPool &descriptorPool,
-                 vk::raii::CommandPool &commandPool,
-                 vk::raii::Queue &queue,
+                 vk::raii::CommandPool &commandPool, vk::raii::Queue &queue,
                  AssetManager &assetManager)
       : device(device), physicalDevice(physicalDevice),
         materialLayout(materialLayout), descriptorPool(descriptorPool),
@@ -66,12 +66,14 @@ public:
 
     // Convert JSON to asset
     MaterialAsset mat;
-    mat.shader = json.value("shader", "default");
+    mat.fragmentShader = json.value("fragmentShader", "sdr_default_model.frag");
+    mat.vertexShader = json.value("vertexShader", "sdr_default_model.vert");
     mat.albedoPath = json.value("albedoMap", "");
     mat.normalPath = json.value("normalMap", "");
     mat.rmaosPath = json.value("rmaosMap", "");
     mat.parallaxPath = json.value("heightMap", "");
-    mat.parallaxStrength = mat.parallaxPath.empty() ? 0.0f : json.value("parallaxStrength", 0.05f);
+    mat.parallaxStrength =
+        mat.parallaxPath.empty() ? 0.0f : json.value("parallaxStrength", 0.05f);
     mat.baseColorFactor =
         parseVec4(json, "baseColorFactor", {1.0f, 1.0f, 1.0f, 1.0f});
     mat.metallicFactor = json.value("metallicFactor", 1.0f);
@@ -82,7 +84,8 @@ public:
     auto getTexture = [&](const std::string &path) -> TextureAsset & {
       if (path.empty())
         return fallbackTexture;
-      // Strip directory and extension: "textures/dirt_albedo.png" -> "dirt_albedo"
+      // Strip directory and extension: "textures/dirt_albedo.png" ->
+      // "dirt_albedo"
       std::filesystem::path p(path);
       auto *t = textures->tryGetAsset(p.stem().string());
       return t ? *t : fallbackTexture;
@@ -166,10 +169,10 @@ private:
     auto memReq = stagingBuf.getMemoryRequirements();
     vk::MemoryAllocateInfo allocInfo{
         .allocationSize = memReq.size,
-        .memoryTypeIndex = findMemoryType(
-            memReq.memoryTypeBits,
-            vk::MemoryPropertyFlagBits::eHostVisible |
-                vk::MemoryPropertyFlagBits::eHostCoherent)};
+        .memoryTypeIndex =
+            findMemoryType(memReq.memoryTypeBits,
+                           vk::MemoryPropertyFlagBits::eHostVisible |
+                               vk::MemoryPropertyFlagBits::eHostCoherent)};
     vk::raii::DeviceMemory stagingMem(device, allocInfo);
     stagingBuf.bindMemory(*stagingMem, 0);
 
@@ -178,26 +181,25 @@ private:
     stagingMem.unmapMemory();
 
     // Create 1x1 image
-    vk::ImageCreateInfo imageInfo{
-        .imageType = vk::ImageType::e2D,
-        .format = vk::Format::eR8G8B8A8Srgb,
-        .extent = {1, 1, 1},
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = vk::SampleCountFlagBits::e1,
-        .tiling = vk::ImageTiling::eOptimal,
-        .usage = vk::ImageUsageFlagBits::eSampled |
-                 vk::ImageUsageFlagBits::eTransferDst,
-        .sharingMode = vk::SharingMode::eExclusive,
-        .initialLayout = vk::ImageLayout::eUndefined};
+    vk::ImageCreateInfo imageInfo{.imageType = vk::ImageType::e2D,
+                                  .format = vk::Format::eR8G8B8A8Srgb,
+                                  .extent = {1, 1, 1},
+                                  .mipLevels = 1,
+                                  .arrayLayers = 1,
+                                  .samples = vk::SampleCountFlagBits::e1,
+                                  .tiling = vk::ImageTiling::eOptimal,
+                                  .usage = vk::ImageUsageFlagBits::eSampled |
+                                           vk::ImageUsageFlagBits::eTransferDst,
+                                  .sharingMode = vk::SharingMode::eExclusive,
+                                  .initialLayout = vk::ImageLayout::eUndefined};
     fallbackTexture.image = vk::raii::Image(device, imageInfo);
 
     auto imgMemReq = fallbackTexture.image.getMemoryRequirements();
     vk::MemoryAllocateInfo imgAllocInfo{
         .allocationSize = imgMemReq.size,
-        .memoryTypeIndex = findMemoryType(
-            imgMemReq.memoryTypeBits,
-            vk::MemoryPropertyFlagBits::eDeviceLocal)};
+        .memoryTypeIndex =
+            findMemoryType(imgMemReq.memoryTypeBits,
+                           vk::MemoryPropertyFlagBits::eDeviceLocal)};
     fallbackTexture.memory = vk::raii::DeviceMemory(device, imgAllocInfo);
     fallbackTexture.image.bindMemory(*fallbackTexture.memory, 0);
 
@@ -210,25 +212,23 @@ private:
 
     // ImageView
     fallbackTexture.imageView = vk::raii::ImageView(
-        device, vk::ImageViewCreateInfo{
-                    .image = *fallbackTexture.image,
-                    .viewType = vk::ImageViewType::e2D,
-                    .format = vk::Format::eR8G8B8A8Srgb,
-                    .subresourceRange = {.aspectMask =
-                                             vk::ImageAspectFlagBits::eColor,
-                                         .levelCount = 1,
-                                         .layerCount = 1}});
+        device,
+        vk::ImageViewCreateInfo{
+            .image = *fallbackTexture.image,
+            .viewType = vk::ImageViewType::e2D,
+            .format = vk::Format::eR8G8B8A8Srgb,
+            .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                                 .levelCount = 1,
+                                 .layerCount = 1}});
 
     // Sampler
     fallbackTexture.sampler = vk::raii::Sampler(
-        device, vk::SamplerCreateInfo{.magFilter = vk::Filter::eNearest,
-                                      .minFilter = vk::Filter::eNearest,
-                                      .mipmapMode =
-                                          vk::SamplerMipmapMode::eNearest,
-                                      .addressModeU =
-                                          vk::SamplerAddressMode::eRepeat,
-                                      .addressModeV =
-                                          vk::SamplerAddressMode::eRepeat});
+        device,
+        vk::SamplerCreateInfo{.magFilter = vk::Filter::eNearest,
+                              .minFilter = vk::Filter::eNearest,
+                              .mipmapMode = vk::SamplerMipmapMode::eNearest,
+                              .addressModeU = vk::SamplerAddressMode::eRepeat,
+                              .addressModeV = vk::SamplerAddressMode::eRepeat});
 
     fallbackTexture.width = 1;
     fallbackTexture.height = 1;
@@ -282,8 +282,8 @@ private:
         .imageSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
                              .layerCount = 1},
         .imageExtent = {w, h, 1}};
-    cmd.copyBufferToImage(*buffer, *image,
-                          vk::ImageLayout::eTransferDstOptimal, region);
+    cmd.copyBufferToImage(*buffer, *image, vk::ImageLayout::eTransferDstOptimal,
+                          region);
 
     cmd.end();
     vk::SubmitInfo submitInfo{.commandBufferCount = 1,

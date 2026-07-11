@@ -6,6 +6,29 @@
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
+struct ShaderKey {
+  std::string vertex;
+  std::string fragment;
+
+  bool operator==(const ShaderKey &other) const {
+    return vertex == other.vertex && fragment == other.fragment;
+  }
+};
+
+struct ShaderKeyHash {
+  size_t operator()(const ShaderKey &k) const {
+    auto h1 = std::hash<std::string>{}(k.vertex);
+    auto h2 = std::hash<std::string>{}(k.fragment);
+    return h1 ^ (h2 << 1);
+  }
+};
+
+struct ShaderKeyEqual {
+  bool operator()(const ShaderKey &a, const ShaderKey &b) const {
+    return a.vertex == b.vertex && a.fragment == b.fragment;
+  }
+};
+
 struct ShaderAsset {
   std::vector<char> code;
   vk::raii::ShaderModule module = nullptr;
@@ -31,8 +54,7 @@ public:
 
     vk::ShaderModuleCreateInfo createInfo{
         .codeSize = shader.code.size() * sizeof(char),
-        .pCode =
-            reinterpret_cast<const uint32_t *>(shader.code.data())};
+        .pCode = reinterpret_cast<const uint32_t *>(shader.code.data())};
     shader.module = vk::raii::ShaderModule(device, createInfo);
 
     return shader;

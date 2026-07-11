@@ -1,6 +1,9 @@
 #pragma once
 
+#include "assets/shader_loader.h"
 #include <cstdint>
+#include <unordered_map>
+#include <vector>
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
@@ -57,7 +60,11 @@ private:
   std::vector<vk::raii::ImageView> swapChainImageViews;
 
   vk::raii::PipelineLayout pipelineLayout = nullptr;
-  vk::raii::Pipeline graphicsPipeline = nullptr;
+
+  std::unordered_map<ShaderKey, std::unique_ptr<vk::raii::Pipeline>,
+                     ShaderKeyHash, ShaderKeyEqual>
+      graphicsPipelines;
+
   vk::raii::CommandPool commandPool = nullptr;
   vk::raii::CommandBuffer commandBuffer = nullptr;
   vk::raii::Semaphore presentCompleteSemaphore = nullptr;
@@ -106,7 +113,6 @@ private:
   vk::SurfaceFormatKHR chooseSwapSurfaceFormat(
       const std::vector<vk::SurfaceFormatKHR> &availableFormats);
   void createImageViews();
-  void createGraphicsPipeline();
   void createCommandPool();
   void createCommandBuffer();
   void recordCommandBuffer(uint32_t imageIndex, uint32_t currentFrame);
@@ -117,11 +123,19 @@ private:
                                vk::PipelineStageFlags2 src_stage_mask,
                                vk::PipelineStageFlags2 dst_stage_mask);
 
+  // Graphics Pipelines
+  void createGraphicsPipelineLayout();
+  vk::Pipeline getOrCreatePipeline(const ShaderKey &key);
+  void createPipelineForKey(const ShaderKey &key);
+
+  // Buffers
   void createUniformBuffers();
+  void updateUniformBuffer(uint32_t currentFrame);
+
+  /// Descriptors
   void createDescriptorSetLayout();
   void createDescriptorSets();
   void createDescriptorPool();
-  void updateUniformBuffer(uint32_t currentFrame);
 
   void createCubeMesh();
   void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,

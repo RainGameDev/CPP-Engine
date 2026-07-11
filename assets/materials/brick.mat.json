@@ -1,6 +1,7 @@
 {
   "name": "brick",
-  "shader": "pbr_standard",
+  "vertexShader": "test.vert",
+  "fragmentShader": "test.frag",
   "albedoMap": "steelarmor",
   "normalMap": "steelarmor_n",
   "rmaosMap": "steelarmor_rmaos",
