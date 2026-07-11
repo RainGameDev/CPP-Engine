@@ -63,12 +63,6 @@ void VulkanApplication::createGraphicsPipeline() {
 
   vk::PipelineColorBlendAttachmentState colorBlendAttachment{
       .blendEnable = vk::False,
-      .srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
-      .dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
-      .colorBlendOp = vk::BlendOp::eAdd,
-      .srcAlphaBlendFactor = vk::BlendFactor::eOne,
-      .dstAlphaBlendFactor = vk::BlendFactor::eZero,
-      .alphaBlendOp = vk::BlendOp::eAdd,
       .colorWriteMask =
           vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
           vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};

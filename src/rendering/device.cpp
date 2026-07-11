@@ -90,10 +90,8 @@ void VulkanApplication::createLogicalDevice() {
                      vk::PhysicalDeviceVulkan11Features,
                      vk::PhysicalDeviceVulkan13Features,
                      vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
-      featureChain = {{},
-                      {
-                          .shaderDrawParameters = true,
-                      },
+      featureChain = {{.features = {.samplerAnisotropy = true}},
+                      {.shaderDrawParameters = true},
                       {.synchronization2 = true, .dynamicRendering = true},
                       {.extendedDynamicState = true}};
 

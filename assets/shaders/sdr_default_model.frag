@@ -8,5 +8,5 @@ layout(location = 0) out vec4 outColor;
 layout(set = 0, binding = 1) uniform sampler2D albedoMap;
 
 void main() {
-    outColor = texture(albedoMap, fragUV);
+    outColor = texture(albedoMap, fragUV) * vec4(fragColor, 1.0);
 }

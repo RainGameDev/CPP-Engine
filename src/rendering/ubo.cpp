@@ -53,10 +53,9 @@ void VulkanApplication::createDescriptorSetLayout() {
   std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {
       uboLayoutBinding, samplerLayoutBinding};
 
-  vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount =
-                                                   static_cast<uint32_t>(
-                                                       bindings.size()),
-                                               .pBindings = bindings.data()};
+  vk::DescriptorSetLayoutCreateInfo layoutInfo{
+      .bindingCount = static_cast<uint32_t>(bindings.size()),
+      .pBindings = bindings.data()};
 
   descriptorSetLayout = device.createDescriptorSetLayout(layoutInfo);
 }
