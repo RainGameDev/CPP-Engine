@@ -12,13 +12,16 @@ struct MaterialPushConstants {
   glm::vec4 baseColorFactor;
   float metallicFactor;
   float roughnessFactor;
+  float parallaxStrength;
 };
 
 struct MaterialAsset {
   std::string shader;
   std::string albedoPath;
   std::string normalPath;
-  std::string metallicRoughnessPath;
+  std::string rmaosPath;
+  std::string parallaxPath;
+  float parallaxStrength;
   glm::vec4 baseColorFactor;
   float metallicFactor;
   float roughnessFactor;
@@ -66,7 +69,9 @@ public:
     mat.shader = json.value("shader", "default");
     mat.albedoPath = json.value("albedoMap", "");
     mat.normalPath = json.value("normalMap", "");
-    mat.metallicRoughnessPath = json.value("metallicRoughnessMap", "");
+    mat.rmaosPath = json.value("rmaosMap", "");
+    mat.parallaxPath = json.value("heightMap", "");
+    mat.parallaxStrength = mat.parallaxPath.empty() ? 0.0f : json.value("parallaxStrength", 0.05f);
     mat.baseColorFactor =
         parseVec4(json, "baseColorFactor", {1.0f, 1.0f, 1.0f, 1.0f});
     mat.metallicFactor = json.value("metallicFactor", 1.0f);
@@ -85,7 +90,8 @@ public:
 
     auto &albedo = getTexture(mat.albedoPath);
     auto &normal = getTexture(mat.normalPath);
-    auto &mr = getTexture(mat.metallicRoughnessPath);
+    auto &rmaos = getTexture(mat.rmaosPath);
+    auto &heightTex = getTexture(mat.parallaxPath);
 
     // Allocate descriptor set
     vk::DescriptorSetLayout layouts[] = {materialLayout};
@@ -105,9 +111,10 @@ public:
 
     vk::DescriptorImageInfo albedoInfo = writeImageInfo(albedo);
     vk::DescriptorImageInfo normalInfo = writeImageInfo(normal);
-    vk::DescriptorImageInfo mrInfo = writeImageInfo(mr);
+    vk::DescriptorImageInfo rmaosInfo = writeImageInfo(rmaos);
+    vk::DescriptorImageInfo heightInfo = writeImageInfo(heightTex);
 
-    std::array<vk::WriteDescriptorSet, 3> writes{{
+    std::array<vk::WriteDescriptorSet, 4> writes{{
         // Albedo
         {.dstSet = *mat.descriptorSet,
          .dstBinding = 0,
@@ -120,13 +127,18 @@ public:
          .descriptorCount = 1,
          .descriptorType = vk::DescriptorType::eCombinedImageSampler,
          .pImageInfo = &normalInfo},
-        // TODO: replace with RMAOS
-        // MR
+        // RMAOS
         {.dstSet = *mat.descriptorSet,
          .dstBinding = 2,
          .descriptorCount = 1,
          .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-         .pImageInfo = &mrInfo},
+         .pImageInfo = &rmaosInfo},
+        // Height (parallax)
+        {.dstSet = *mat.descriptorSet,
+         .dstBinding = 3,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+         .pImageInfo = &heightInfo},
     }};
     device.updateDescriptorSets(writes, nullptr);
 

@@ -1,6 +1,8 @@
 #pragma once
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <fstream>
 #include <stdexcept>
 #include <vector>
 
@@ -9,6 +11,78 @@
 #include <stb_image.h>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
+
+// DDS file structures
+#pragma pack(push, 1)
+struct DDSHeader {
+  uint32_t magic;      // "DDS" = 0x20534444
+  uint32_t headerSize; // 124
+  uint32_t flags;
+  uint32_t height;
+  uint32_t width;
+  uint32_t pitchOrLinearSize;
+  uint32_t depth;
+  uint32_t mipMapCount;
+  uint32_t reserved1[11];
+  struct {
+    uint32_t dwSize; // 32
+    uint32_t dwFlags;
+    uint32_t dwFourCC;
+    uint32_t dwRGBBitCount;
+    uint32_t dwRBitMask;
+    uint32_t dwGBitMask;
+    uint32_t dwBBitMask;
+    uint32_t dwABitMask;
+  } ddspf;
+  uint32_t dwCaps;
+  uint32_t dwCaps2;
+  uint32_t dwCaps3;
+  uint32_t dwCaps4;
+  uint32_t dwReserved2;
+};
+
+struct DDSHeaderDX10 {
+  uint32_t dxgiFormat;
+  uint32_t resourceDimension;
+  uint32_t miscFlag;
+  uint32_t arraySize;
+  uint32_t miscFlags2;
+};
+#pragma pack(pop)
+
+enum {
+  DDS_FOURCC = 0x4,
+  DDS_RGB = 0x40,
+  DDS_LUMINANCE = 0x20000,
+  DDS_ALPHA = 0x1,
+};
+
+// DXGI formats
+enum DXGIFormat : uint32_t {
+  DXGI_FORMAT_UNKNOWN = 0,
+  DXGI_FORMAT_R8_UNORM = 61,
+  DXGI_FORMAT_BC1_TYPELESS = 70,
+  DXGI_FORMAT_BC1_UNORM = 71,
+  DXGI_FORMAT_BC1_UNORM_SRGB = 72,
+  DXGI_FORMAT_BC2_TYPELESS = 73,
+  DXGI_FORMAT_BC2_UNORM = 74,
+  DXGI_FORMAT_BC2_UNORM_SRGB = 75,
+  DXGI_FORMAT_BC3_TYPELESS = 76,
+  DXGI_FORMAT_BC3_UNORM = 77,
+  DXGI_FORMAT_BC3_UNORM_SRGB = 78,
+  DXGI_FORMAT_BC4_TYPELESS = 79,
+  DXGI_FORMAT_BC4_UNORM = 80,
+  DXGI_FORMAT_BC4_SNORM = 81,
+  DXGI_FORMAT_BC5_TYPELESS = 82,
+  DXGI_FORMAT_BC5_UNORM = 83,
+  DXGI_FORMAT_BC5_SNORM = 84,
+  DXGI_FORMAT_BC6H_TYPELESS = 94,
+  DXGI_FORMAT_BC6H_UF16 = 95,
+  DXGI_FORMAT_BC6H_SF16 = 96,
+  DXGI_FORMAT_BC7_TYPELESS = 97,
+  DXGI_FORMAT_BC7_UNORM = 98,
+  DXGI_FORMAT_BC7_UNORM_SRGB = 99,
+};
 
 struct TextureAsset {
   uint32_t width, height, mipLevels;
@@ -36,6 +110,70 @@ public:
 
   std::vector<std::string> extensions() const override {
     return {".png", ".jpg", ".jpeg", ".dds", ".bmp"};
+  }
+
+  static bool isDDS(const std::string &path) {
+    return path.size() >= 4 && path.compare(path.size() - 4, 4, ".dds") == 0;
+  }
+
+  static vk::Format ddsToVulkanFormat(uint32_t dxgiFormat) {
+    switch (dxgiFormat) {
+    case DXGI_FORMAT_BC1_UNORM:
+    case DXGI_FORMAT_BC1_TYPELESS:
+      return vk::Format::eBc1RgbaUnormBlock;
+    case DXGI_FORMAT_BC1_UNORM_SRGB:
+      return vk::Format::eBc1RgbaSrgbBlock;
+    case DXGI_FORMAT_BC2_UNORM:
+    case DXGI_FORMAT_BC2_TYPELESS:
+      return vk::Format::eBc2UnormBlock;
+    case DXGI_FORMAT_BC2_UNORM_SRGB:
+      return vk::Format::eBc2SrgbBlock;
+    case DXGI_FORMAT_BC3_UNORM:
+    case DXGI_FORMAT_BC3_TYPELESS:
+      return vk::Format::eBc3UnormBlock;
+    case DXGI_FORMAT_BC3_UNORM_SRGB:
+      return vk::Format::eBc3SrgbBlock;
+    case DXGI_FORMAT_BC4_UNORM:
+    case DXGI_FORMAT_BC4_TYPELESS:
+      return vk::Format::eBc4UnormBlock;
+    case DXGI_FORMAT_BC4_SNORM:
+      return vk::Format::eBc4SnormBlock;
+    case DXGI_FORMAT_BC5_UNORM:
+    case DXGI_FORMAT_BC5_TYPELESS:
+      return vk::Format::eBc5UnormBlock;
+    case DXGI_FORMAT_BC5_SNORM:
+      return vk::Format::eBc5SnormBlock;
+    case DXGI_FORMAT_BC6H_UF16:
+    case DXGI_FORMAT_BC6H_TYPELESS:
+      return vk::Format::eBc6HUfloatBlock;
+    case DXGI_FORMAT_BC6H_SF16:
+      return vk::Format::eBc6HSfloatBlock;
+    case DXGI_FORMAT_BC7_UNORM:
+    case DXGI_FORMAT_BC7_TYPELESS:
+      return vk::Format::eBc7UnormBlock;
+    case DXGI_FORMAT_BC7_UNORM_SRGB:
+      return vk::Format::eBc7SrgbBlock;
+    case DXGI_FORMAT_R8_UNORM:
+      return vk::Format::eR8Unorm;
+    default:
+      return vk::Format::eUndefined;
+    }
+  }
+
+  static uint32_t getBlockSize(vk::Format fmt) {
+    switch (fmt) {
+    case vk::Format::eBc1RgbaUnormBlock:
+    case vk::Format::eBc1RgbaSrgbBlock:
+    case vk::Format::eBc4UnormBlock:
+    case vk::Format::eBc4SnormBlock:
+      return 8; // 8 bytes per 4x4 block
+    default:
+      return 16; // 16 bytes per 4x4 block
+    }
+  }
+
+  static uint32_t align(uint32_t value, uint32_t alignment) {
+    return (value + alignment - 1) / alignment * alignment;
   }
 
   /// Evil ass math function that fixes my mipmaps
@@ -108,6 +246,10 @@ public:
   }
 
   TextureAsset loadAsset(const std::string &path) override {
+
+    if (isDDS(path)) {
+      return loadDDS(path);
+    }
 
     // Load pixels from the file
     int w, h, channels;
@@ -204,6 +346,201 @@ public:
   }
 
 private:
+  TextureAsset loadDDS(const std::string &path) {
+    // Read entire file
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+      throw std::runtime_error("Failed to open DDS file: " + path);
+
+    size_t fileSize = static_cast<size_t>(file.tellg());
+    file.seekg(0, std::ios::beg);
+
+    std::vector<uint8_t> fileData(fileSize);
+    file.read(reinterpret_cast<char *>(fileData.data()), fileSize);
+    file.close();
+
+    // Parse header
+    if (fileSize < sizeof(DDSHeader))
+      throw std::runtime_error("DDS file too small: " + path);
+
+    DDSHeader header;
+    memcpy(&header, fileData.data(), sizeof(DDSHeader));
+
+    if (header.magic != 0x20534444) // "DDS "
+      throw std::runtime_error("Invalid DDS magic number: " + path);
+
+    uint32_t width = header.width;
+    uint32_t height = header.height;
+    uint32_t mipLevels = header.mipMapCount;
+    if (mipLevels == 0)
+      mipLevels = 1;
+
+    // Determine format
+    vk::Format format = vk::Format::eUndefined;
+    bool hasDX10Header = (header.ddspf.dwFourCC == 0x30315844); // "DX10"
+
+    if (hasDX10Header) {
+      if (fileSize < sizeof(DDSHeader) + sizeof(DDSHeaderDX10))
+        throw std::runtime_error("DDS DX10 header too small: " + path);
+
+      DDSHeaderDX10 dx10Header;
+      memcpy(&dx10Header, fileData.data() + sizeof(DDSHeader),
+             sizeof(DDSHeaderDX10));
+      format = ddsToVulkanFormat(dx10Header.dxgiFormat);
+    } else {
+      // Legacy FourCC formats
+      uint32_t fourCC = header.ddspf.dwFourCC;
+      switch (fourCC) {
+      case 0x31545844: // "DXT1"
+        format = vk::Format::eBc1RgbaUnormBlock;
+        break;
+      case 0x33545844: // "DXT3"
+        format = vk::Format::eBc2UnormBlock;
+        break;
+      case 0x35545844: // "DXT5"
+        format = vk::Format::eBc3UnormBlock;
+        break;
+      case 0x55344342: // "BC4U"
+        format = vk::Format::eBc4UnormBlock;
+        break;
+      case 0x53344342: // "BC4S"
+        format = vk::Format::eBc4SnormBlock;
+        break;
+      case 0x55354342: // "BC5U"
+        format = vk::Format::eBc5UnormBlock;
+        break;
+      case 0x53354342: // "BC5S"
+        format = vk::Format::eBc5SnormBlock;
+        break;
+      default:
+        // Try uncompressed formats from bit masks
+        if (header.ddspf.dwFlags & DDS_RGB) {
+          if (header.ddspf.dwRGBBitCount == 32) {
+            if (header.ddspf.dwRBitMask == 0x000000FF &&
+                header.ddspf.dwGBitMask == 0x0000FF00 &&
+                header.ddspf.dwBBitMask == 0x00FF0000) {
+              format = vk::Format::eR8G8B8A8Unorm;
+            }
+          } else if (header.ddspf.dwRGBBitCount == 24) {
+            format = vk::Format::eR8G8B8Unorm;
+          }
+        } else if (header.ddspf.dwFlags & DDS_LUMINANCE) {
+          if (header.ddspf.dwRGBBitCount == 8) {
+            format = vk::Format::eR8Unorm;
+          }
+        }
+        break;
+      }
+    }
+
+    if (format == vk::Format::eUndefined)
+      throw std::runtime_error("Unsupported DDS format: " + path);
+
+    // Get block size for compressed formats
+    bool isCompressed = (format >= vk::Format::eBc1RgbaUnormBlock &&
+                         format <= vk::Format::eBc7SrgbBlock);
+    uint32_t blockSize = isCompressed ? getBlockSize(format) : 4;
+    uint32_t blockAlignment = isCompressed ? 4 : 1;
+
+    // Calculate mip sizes and total size
+    vk::DeviceSize totalSize = 0;
+    std::vector<vk::DeviceSize> offsets(mipLevels);
+    std::vector<uint32_t> mipWidths(mipLevels);
+    std::vector<uint32_t> mipHeights(mipLevels);
+
+    for (uint32_t i = 0; i < mipLevels; i++) {
+      uint32_t mipW = std::max(1u, width >> i);
+      uint32_t mipH = std::max(1u, height >> i);
+      mipWidths[i] = mipW;
+      mipHeights[i] = mipH;
+
+      uint32_t alignedW = align(mipW, blockAlignment);
+      uint32_t alignedH = align(mipH, blockAlignment);
+
+      vk::DeviceSize levelSize;
+      if (isCompressed) {
+        levelSize = (alignedW / 4) * (alignedH / 4) * blockSize;
+      } else {
+        levelSize = alignedW * alignedH * blockSize;
+      }
+
+      offsets[i] = totalSize;
+      totalSize += levelSize;
+    }
+
+    // Determine data offset (after headers)
+    size_t dataOffset = sizeof(DDSHeader);
+    if (hasDX10Header)
+      dataOffset += sizeof(DDSHeaderDX10);
+
+    if (dataOffset + totalSize > fileSize)
+      throw std::runtime_error("DDS file data truncated: " + path);
+
+    // Create staging buffer
+    vk::raii::Buffer stagingBuffer{nullptr};
+    vk::raii::DeviceMemory stagingMemory{nullptr};
+    createBuffer(totalSize, vk::BufferUsageFlagBits::eTransferSrc,
+                 vk::MemoryPropertyFlagBits::eHostVisible |
+                     vk::MemoryPropertyFlagBits::eHostCoherent,
+                 stagingBuffer, stagingMemory);
+
+    void *mapped = stagingMemory.mapMemory(0, totalSize);
+    memcpy(mapped, fileData.data() + dataOffset, totalSize);
+    stagingMemory.unmapMemory();
+
+    // Create image
+    vk::raii::Image image{nullptr};
+    vk::raii::DeviceMemory imageMemory{nullptr};
+    createImage(width, height, mipLevels, format, vk::ImageTiling::eOptimal,
+                vk::ImageUsageFlagBits::eSampled |
+                    vk::ImageUsageFlagBits::eTransferDst,
+                image, imageMemory);
+
+    transitionImageLayout(image, mipLevels, vk::ImageLayout::eUndefined,
+                          vk::ImageLayout::eTransferDstOptimal);
+
+    // Create command buffer and copy mip levels
+    auto commandBuffers = vk::raii::CommandBuffers(
+        device, {.commandPool = *commandPool,
+                 .level = vk::CommandBufferLevel::ePrimary,
+                 .commandBufferCount = 1});
+    auto cmd = std::move(commandBuffers.front());
+    cmd.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+    for (uint32_t i = 0; i < mipLevels; i++) {
+      vk::BufferImageCopy region{
+          .bufferOffset = offsets[i],
+          .imageSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                               .mipLevel = i,
+                               .layerCount = 1},
+          .imageExtent = {mipWidths[i], mipHeights[i], 1}};
+      cmd.copyBufferToImage(*stagingBuffer, *image,
+                            vk::ImageLayout::eTransferDstOptimal, region);
+    }
+    cmd.end();
+
+    vk::SubmitInfo submitInfo{.commandBufferCount = 1,
+                              .pCommandBuffers = &*cmd};
+    queue.submit(submitInfo, nullptr);
+    queue.waitIdle();
+
+    transitionImageLayout(image, mipLevels,
+                          vk::ImageLayout::eTransferDstOptimal,
+                          vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    // Create image view and sampler
+    vk::raii::ImageView imageView = createImageView(image, format);
+    vk::raii::Sampler sampler = createSampler(mipLevels);
+
+    return {width,
+            height,
+            mipLevels,
+            format,
+            std::move(image),
+            std::move(imageView),
+            std::move(imageMemory),
+            std::move(sampler)};
+  }
   uint32_t findMemoryType(uint32_t typeFilter,
                           vk::MemoryPropertyFlags properties) {
     auto memProperties = physicalDevice.getMemoryProperties();

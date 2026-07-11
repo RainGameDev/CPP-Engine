@@ -1,10 +1,12 @@
 {
   "name": "brick",
   "shader": "pbr_standard",
-  "albedoMap": "a_brick.png",
-  "normalMap": "n_brick.png",
-  "metallicRoughnessMap": "dirt_mr.png",
-  "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
-  "metallicFactor": 1.0,
-  "roughnessFactor": 0.6
+  "albedoMap": "steelarmor",
+  "normalMap": "steelarmor_n",
+  "rmaosMap": "steelarmor_rmaos",
+  "heightMap": "",
+  "parallaxStrength": 0.2,
+  "baseColorFactor": [1.0, 0.95, 0.9, 1.0],
+  "metallicFactor": 0.0,
+  "roughnessFactor": 0.85
 }

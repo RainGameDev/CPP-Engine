@@ -1,6 +1,6 @@
+#include "assets/material_loader.h"
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
-#include "assets/material_loader.h"
 #include "rendering/vulkan_application.h"
 
 #include <cstdint>
@@ -30,7 +30,7 @@ void VulkanApplication::recordCommandBuffer(uint32_t imageIndex,
                           vk::PipelineStageFlagBits2::eColorAttachmentOutput,
                           vk::PipelineStageFlagBits2::eColorAttachmentOutput);
 
-  vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+  vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.25f, 1.0f, 1.0f);
   vk::RenderingAttachmentInfo attachmentInfo = {
       .imageView = swapChainImageViews[imageIndex],
       .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
@@ -68,10 +68,12 @@ void VulkanApplication::recordCommandBuffer(uint32_t imageIndex,
 
     MaterialPushConstants pc{.baseColorFactor = mat->baseColorFactor,
                              .metallicFactor = mat->metallicFactor,
-                             .roughnessFactor = mat->roughnessFactor};
+                             .roughnessFactor = mat->roughnessFactor,
+                             .parallaxStrength = mat->parallaxStrength};
     commandBuffer.pushConstants(*pipelineLayout,
-                                vk::ShaderStageFlagBits::eFragment, 0,
-                                sizeof(pc), &pc);
+                                vk::ShaderStageFlagBits::eVertex |
+                                    vk::ShaderStageFlagBits::eFragment,
+                                0, sizeof(pc), &pc);
 
     commandBuffer.bindVertexBuffers(0, {*mesh.vertexBuffer}, {0});
     commandBuffer.bindIndexBuffer(*mesh.indexBuffer, 0, vk::IndexType::eUint32);

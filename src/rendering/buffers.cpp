@@ -52,52 +52,89 @@ void VulkanApplication::copyBuffer(vk::raii::Buffer &srcBuffer,
 }
 
 void VulkanApplication::createCubeMesh() {
-  std::vector<Vertex> vertices = {
-      // --- FRONT FACE (+Z) ---
-      {{-0.5f, -0.5f, 0.5f}, {1, 1, 1}, {0, 0}, {1, 0, 0}, {0, 0, 1}},
-      {{0.5f, -0.5f, 0.5f}, {1, 1, 1}, {1, 0}, {1, 0, 0}, {0, 0, 1}},
-      {{0.5f, 0.5f, 0.5f}, {1, 1, 1}, {1, 1}, {1, 0, 0}, {0, 0, 1}},
-      {{-0.5f, 0.5f, 0.5f}, {1, 1, 1}, {0, 1}, {1, 0, 0}, {0, 0, 1}},
+  constexpr uint32_t SUBDIVISIONS = 32;
 
-      // --- BACK FACE (-Z) ---
-      {{0.5f, -0.5f, -0.5f}, {1, 1, 1}, {0, 1}, {-1, 0, 0}, {0, 0, -1}},
-      {{-0.5f, -0.5f, -0.5f}, {1, 1, 1}, {1, 1}, {-1, 0, 0}, {0, 0, -1}},
-      {{-0.5f, 0.5f, -0.5f}, {1, 1, 1}, {1, 0}, {-1, 0, 0}, {0, 0, -1}},
-      {{0.5f, 0.5f, -0.5f}, {1, 1, 1}, {0, 0}, {-1, 0, 0}, {0, 0, -1}},
+  std::vector<Vertex> vertices;
+  std::vector<uint32_t> indices;
 
-      // --- LEFT FACE (-X) ---
-      {{-0.5f, -0.5f, -0.5f}, {1, 1, 1}, {0, 1}, {0, 0, 1}, {-1, 0, 0}},
-      {{-0.5f, -0.5f, 0.5f}, {1, 1, 1}, {1, 1}, {0, 0, 1}, {-1, 0, 0}},
-      {{-0.5f, 0.5f, 0.5f}, {1, 1, 1}, {1, 0}, {0, 0, 1}, {-1, 0, 0}},
-      {{-0.5f, 0.5f, -0.5f}, {1, 1, 1}, {0, 0}, {0, 0, 1}, {-1, 0, 0}},
-
-      // --- RIGHT FACE (+X) ---
-      {{0.5f, -0.5f, 0.5f}, {1, 1, 1}, {0, 1}, {0, 0, -1}, {1, 0, 0}},
-      {{0.5f, -0.5f, -0.5f}, {1, 1, 1}, {1, 1}, {0, 0, -1}, {1, 0, 0}},
-      {{0.5f, 0.5f, -0.5f}, {1, 1, 1}, {1, 0}, {0, 0, -1}, {1, 0, 0}},
-      {{0.5f, 0.5f, 0.5f}, {1, 1, 1}, {0, 0}, {0, 0, -1}, {1, 0, 0}},
-
-      // --- TOP FACE (+Y) ---
-      {{-0.5f, 0.5f, 0.5f}, {1, 1, 1}, {0, 1}, {1, 0, 0}, {0, 1, 0}},
-      {{0.5f, 0.5f, 0.5f}, {1, 1, 1}, {1, 1}, {1, 0, 0}, {0, 1, 0}},
-      {{0.5f, 0.5f, -0.5f}, {1, 1, 1}, {1, 0}, {1, 0, 0}, {0, 1, 0}},
-      {{-0.5f, 0.5f, -0.5f}, {1, 1, 1}, {0, 0}, {1, 0, 0}, {0, 1, 0}},
-
-      // --- BOTTOM FACE (-Y) ---
-      {{0.5f, -0.5f, 0.5f}, {1, 1, 1}, {0, 1}, {-1, 0, 0}, {0, -1, 0}},
-      {{-0.5f, -0.5f, 0.5f}, {1, 1, 1}, {1, 1}, {-1, 0, 0}, {0, -1, 0}},
-      {{-0.5f, -0.5f, -0.5f}, {1, 1, 1}, {1, 0}, {-1, 0, 0}, {0, -1, 0}},
-      {{0.5f, -0.5f, -0.5f}, {1, 1, 1}, {0, 0}, {-1, 0, 0}, {0, -1, 0}},
+  // Each face: 4 corners, normal, tangent, 2 tangent-space axes
+  struct FaceDef {
+    glm::vec3 normal;
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
+    // corner positions in winding order
+    glm::vec3 corners[4];
+    // UV for each corner
+    glm::vec2 uvs[4];
   };
 
-  std::vector<uint32_t> indices = {
-      0,  1,  2,  0,  2,  3,  // Front
-      4,  5,  6,  4,  6,  7,  // Back
-      8,  9,  10, 8,  10, 11, // Left
-      12, 13, 14, 12, 14, 15, // Right
-      16, 17, 18, 16, 18, 19, // Top
-      20, 21, 22, 20, 22, 23, // Bottom
+  FaceDef faces[6] = {
+      // Front (+Z)
+      {{0, 0, 1}, {1, 0, 0}, {0, 1, 0},
+       {{-0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}},
+       {{0, 0}, {1, 0}, {1, 1}, {0, 1}}},
+      // Back (-Z)
+      {{0, 0, -1}, {-1, 0, 0}, {0, 1, 0},
+       {{0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}},
+       {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
+      // Left (-X)
+      {{-1, 0, 0}, {0, 0, 1}, {0, 1, 0},
+       {{-0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, -0.5f}},
+       {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
+      // Right (+X)
+      {{1, 0, 0}, {0, 0, -1}, {0, 1, 0},
+       {{0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}},
+       {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
+      // Top (+Y)
+      {{0, 1, 0}, {1, 0, 0}, {0, 0, 1},
+       {{-0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}},
+       {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
+      // Bottom (-Y)
+      {{0, -1, 0}, {-1, 0, 0}, {0, 0, 1},
+       {{0.5f, -0.5f, 0.5f}, {-0.5f, -0.5f, 0.5f}, {-0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, -0.5f}},
+       {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
   };
+
+  for (uint32_t f = 0; f < 6; f++) {
+    auto &face = faces[f];
+    uint32_t base = static_cast<uint32_t>(vertices.size());
+
+    for (uint32_t j = 0; j <= SUBDIVISIONS; j++) {
+      for (uint32_t i = 0; i <= SUBDIVISIONS; i++) {
+        float u = static_cast<float>(i) / SUBDIVISIONS;
+        float v = static_cast<float>(j) / SUBDIVISIONS;
+
+        // Bilinear interpolation of position
+        glm::vec3 p = (1 - u) * (1 - v) * face.corners[0] +
+                      u * (1 - v) * face.corners[1] +
+                      u * v * face.corners[2] +
+                      (1 - u) * v * face.corners[3];
+
+        // Bilinear interpolation of UV
+        glm::vec2 uv = (1 - u) * (1 - v) * face.uvs[0] +
+                       u * (1 - v) * face.uvs[1] +
+                       u * v * face.uvs[2] +
+                       (1 - u) * v * face.uvs[3];
+
+        vertices.push_back({p, {1, 1, 1}, uv, face.tangent, face.normal});
+      }
+    }
+
+    for (uint32_t j = 0; j < SUBDIVISIONS; j++) {
+      for (uint32_t i = 0; i < SUBDIVISIONS; i++) {
+        uint32_t a = base + j * (SUBDIVISIONS + 1) + i;
+        uint32_t b = a + 1;
+        uint32_t c = a + (SUBDIVISIONS + 1);
+        uint32_t d = c + 1;
+        indices.push_back(a);
+        indices.push_back(b);
+        indices.push_back(d);
+        indices.push_back(a);
+        indices.push_back(d);
+        indices.push_back(c);
+      }
+    }
+  }
 
   auto *materials = assetManager.getLoader<MaterialAsset>();
   Mesh cube{};

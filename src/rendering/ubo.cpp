@@ -1,3 +1,4 @@
+#include "glm/ext/vector_float4.hpp"
 #include "rendering/vulkan_application.h"
 
 #include "assets/material_loader.h"
@@ -46,7 +47,7 @@ void VulkanApplication::createDescriptorSetLayout() {
   descriptorSetLayout = device.createDescriptorSetLayout(
       {.bindingCount = 1, .pBindings = &uboLayoutBinding});
 
-  std::array<vk::DescriptorSetLayoutBinding, 3> materialBindings = {{
+  std::array<vk::DescriptorSetLayoutBinding, 4> materialBindings = {{
       {.binding = 0,
        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
        .descriptorCount = 1,
@@ -56,6 +57,10 @@ void VulkanApplication::createDescriptorSetLayout() {
        .descriptorCount = 1,
        .stageFlags = vk::ShaderStageFlagBits::eFragment},
       {.binding = 2,
+       .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+       .descriptorCount = 1,
+       .stageFlags = vk::ShaderStageFlagBits::eFragment},
+      {.binding = 3,
        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
        .descriptorCount = 1,
        .stageFlags = vk::ShaderStageFlagBits::eFragment},
@@ -70,10 +75,10 @@ void VulkanApplication::createDescriptorSets() {
   std::array<vk::DescriptorSetLayout, maxConcurrentFrames> layouts{};
   layouts.fill(*descriptorSetLayout);
 
-  vk::DescriptorSetAllocateInfo allocInfo{
-      .descriptorPool = *descriptorPool,
-      .descriptorSetCount = maxConcurrentFrames,
-      .pSetLayouts = layouts.data()};
+  vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool = *descriptorPool,
+                                          .descriptorSetCount =
+                                              maxConcurrentFrames,
+                                          .pSetLayouts = layouts.data()};
 
   descriptorSets = device.allocateDescriptorSets(allocInfo);
 
@@ -102,6 +107,8 @@ void VulkanApplication::updateUniformBuffer(uint32_t currentFrame) {
 
   // View matrix: get from our camera
   ubo.view = camera.getViewMatrix();
+
+  ubo.pos = glm::vec4(camera.position, 0.0);
 
   // Projection matrix: get from our camera
   ubo.proj = camera.getProjectionMatrix(swapChainExtent.width /

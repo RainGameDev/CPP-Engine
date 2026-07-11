@@ -177,7 +177,7 @@ void VulkanApplication::createDescriptorPool() {
       vk::DescriptorPoolSize{vk::DescriptorType::eUniformBuffer,
                              maxConcurrentFrames},
       vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler,
-                             maxMaterials * 3}};
+                             maxMaterials * 4}};
 
   vk::DescriptorPoolCreateInfo poolInfo{
       .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
