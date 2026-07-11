@@ -8,7 +8,6 @@
 #include "imgui_impl_vulkan.h"
 #include <GLFW/glfw3.h>
 #include <memory>
-#include <print>
 
 void VulkanApplication::run() {
   initVulkan();
@@ -45,21 +44,20 @@ void VulkanApplication::initVulkan() {
   assetManager.loadDirectory("assets/shaders");
   createSwapChain();
   createImageViews();
+  createCommandPool();
   createDescriptorSetLayout();
+  assetManager.addLoader(std::make_unique<TextureLoader>(
+      device, physicalDevice, commandPool, queue, queueIndex));
+  assetManager.loadDirectory("assets/textures");
+
   createDescriptorPool();
   createUniformBuffers();
   createDescriptorSets();
   createGraphicsPipeline();
-  createCommandPool();
-
-  assetManager.addLoader(std::make_unique<TextureLoader>(
-      device, physicalDevice, commandPool, queue, queueIndex));
 
   createCubeMesh();
   createCommandBuffer();
   createSyncObjects();
-
-  assetManager.loadDirectory("assets/textures");
 
   initImGui();
 }
@@ -167,14 +165,17 @@ uint32_t VulkanApplication::findMemoryType(uint32_t typeFilter,
 }
 
 void VulkanApplication::createDescriptorPool() {
-  vk::DescriptorPoolSize poolSize{.type = vk::DescriptorType::eUniformBuffer,
-                                  .descriptorCount = maxConcurrentFrames};
+  std::array<vk::DescriptorPoolSize, 2> poolSizes = {
+      vk::DescriptorPoolSize{vk::DescriptorType::eUniformBuffer,
+                             maxConcurrentFrames},
+      vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler,
+                             maxConcurrentFrames}};
 
   vk::DescriptorPoolCreateInfo poolInfo{
       .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
       .maxSets = maxConcurrentFrames,
-      .poolSizeCount = 1,
-      .pPoolSizes = &poolSize};
+      .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+      .pPoolSizes = poolSizes.data()};
 
   descriptorPool = device.createDescriptorPool(poolInfo);
 }

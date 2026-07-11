@@ -62,7 +62,7 @@ void VulkanApplication::createGraphicsPipeline() {
       .sampleShadingEnable = vk::False};
 
   vk::PipelineColorBlendAttachmentState colorBlendAttachment{
-      .blendEnable = vk::True,
+      .blendEnable = vk::False,
       .srcColorBlendFactor = vk::BlendFactor::eSrcAlpha,
       .dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha,
       .colorBlendOp = vk::BlendOp::eAdd,

@@ -62,8 +62,9 @@ public:
                  stagingBuffer, stagingMemory);
 
     void *mapped = stagingMemory.mapMemory(0, imageSize);
+    memcpy(mapped, pixels, imageSize);
     stagingMemory.unmapMemory();
-    // stbi_free(pixels);
+    free(pixels);
 
     // Create VKImage
     vk::raii::Image image{nullptr};

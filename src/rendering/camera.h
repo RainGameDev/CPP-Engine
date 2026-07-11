@@ -25,8 +25,8 @@ public:
   void updateCameraVectors();
 
   glm::mat4 getViewMatrix() const;
-  glm::mat4 getProjectionMatrix(float aspectRatio, float nearPlane = 0.1f,
-                                float farPlane = 100.0f) const;
+  glm::mat4 getProjectionMatrix(float aspectRatio, float nearPlane = 0.01f,
+                                float farPlane = 10000.0f) const;
 
   void processKeyboard(glm::vec3 inputDirection, float deltaTime);
   void processMouseMovement(float xOffset, float yOffset,

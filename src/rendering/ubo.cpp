@@ -3,6 +3,8 @@
 #include <chrono>
 #include <glm/ext/matrix_transform.hpp>
 
+#include "assets/texture_loader.h"
+
 void VulkanApplication::createUniformBuffers() {
   vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
   // Create the buffer
@@ -41,8 +43,20 @@ void VulkanApplication::createDescriptorSetLayout() {
       .stageFlags = vk::ShaderStageFlagBits::eVertex,
       .pImmutableSamplers = nullptr};
 
-  vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount = 1,
-                                               .pBindings = &uboLayoutBinding};
+  vk::DescriptorSetLayoutBinding samplerLayoutBinding{
+      .binding = 1,
+      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eFragment,
+      .pImmutableSamplers = nullptr};
+
+  std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {
+      uboLayoutBinding, samplerLayoutBinding};
+
+  vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount =
+                                                   static_cast<uint32_t>(
+                                                       bindings.size()),
+                                               .pBindings = bindings.data()};
 
   descriptorSetLayout = device.createDescriptorSetLayout(layoutInfo);
 }
@@ -58,21 +72,35 @@ void VulkanApplication::createDescriptorSets() {
 
   descriptorSets = device.allocateDescriptorSets(allocInfo);
 
-  vk::DescriptorBufferInfo bufferInfo{.offset = 0,
-                                      .range = sizeof(UniformBufferObject)};
+  auto *textures = assetManager.getLoader<TextureAsset>();
+  auto &tex = textures->getAsset("dirt_albedo");
 
   for (size_t i = 0; i < maxConcurrentFrames; i++) {
-    bufferInfo.buffer = *uniformBuffers[i].buffer;
+    vk::DescriptorBufferInfo bufferInfo{.buffer = *uniformBuffers[i].buffer,
+                                        .offset = 0,
+                                        .range = sizeof(UniformBufferObject)};
 
-    vk::WriteDescriptorSet descriptorWrite{
-        .dstSet = descriptorSets[i],
-        .dstBinding = 0,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType = vk::DescriptorType::eUniformBuffer,
-        .pBufferInfo = &bufferInfo};
+    vk::DescriptorImageInfo imageInfo{
+        .sampler = *tex.sampler,
+        .imageView = *tex.imageView,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 
-    device.updateDescriptorSets(descriptorWrite, nullptr);
+    std::array<vk::WriteDescriptorSet, 2> descriptorWrites{{
+        {.dstSet = descriptorSets[i],
+         .dstBinding = 0,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eUniformBuffer,
+         .pBufferInfo = &bufferInfo},
+        {.dstSet = descriptorSets[i],
+         .dstBinding = 1,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+         .pImageInfo = &imageInfo},
+    }};
+
+    device.updateDescriptorSets(descriptorWrites, nullptr);
   }
 }
 
