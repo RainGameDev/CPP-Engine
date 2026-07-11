@@ -1,0 +1,18 @@
+
+newmtl Material.000001
+Ka 1 1 1
+Kd 1 1 1
+Ks 0.662745 0.854912 1
+d 1
+Ns 23
+map_Kd textures\actors\character\male\MaleBody_1.dds
+map_Kn textures\actors\character\male\MaleBody_1_msn.dds
+
+newmtl Material.000001
+Ka 1 1 1
+Kd 1 1 1
+Ks 1 1 1
+d 1
+Ns 40
+map_Kd textures\armor\steel\m\SteelArmor.dds
+map_Kn textures\armor\steel\m\SteelArmor_n.dds

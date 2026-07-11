@@ -1,12 +1,12 @@
 #include "glm/ext/vector_float4.hpp"
-#include "rendering/vulkan_application.h"
+#include "rendering/vulkan_render_context.h"
 
 #include "assets/material_loader.h"
 #include <chrono>
 #include <cstdint>
 #include <glm/ext/matrix_transform.hpp>
 
-void VulkanApplication::createUniformBuffers() {
+void VulkanRenderingContext::createUniformBuffers() {
   vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
   // Create the buffer
   vk::BufferCreateInfo bufferInfo{.size = bufferSize,
@@ -36,7 +36,7 @@ void VulkanApplication::createUniformBuffers() {
   }
 }
 
-void VulkanApplication::createDescriptorSetLayout() {
+void VulkanRenderingContext::createDescriptorSetLayout() {
   vk::DescriptorSetLayoutBinding uboLayoutBinding{
       .binding = 0,
       .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -71,7 +71,7 @@ void VulkanApplication::createDescriptorSetLayout() {
        .pBindings = materialBindings.data()});
 }
 
-void VulkanApplication::createDescriptorSets() {
+void VulkanRenderingContext::createDescriptorSets() {
   std::array<vk::DescriptorSetLayout, maxConcurrentFrames> layouts{};
   layouts.fill(*descriptorSetLayout);
 
@@ -99,24 +99,4 @@ void VulkanApplication::createDescriptorSets() {
   }
 }
 
-void VulkanApplication::updateUniformBuffer(uint32_t currentFrame) {
 
-  UniformBufferObject ubo{};
-
-  ubo.model = glm::mat4(1.0f);
-
-  // View matrix: get from our camera
-  ubo.view = camera.getViewMatrix();
-
-  ubo.pos = glm::vec4(camera.position, 0.0);
-
-  // Projection matrix: get from our camera
-  ubo.proj = camera.getProjectionMatrix(swapChainExtent.width /
-                                        (float)swapChainExtent.height);
-
-  // Vulkan's Y coordinate is inverted compared to OpenGL
-  ubo.proj[1][1] *= -1;
-
-  // Copy the data to the uniform buffer for the current frame-in-flight
-  memcpy(uniformBuffers[currentFrame].mapped, &ubo, sizeof(ubo));
-}

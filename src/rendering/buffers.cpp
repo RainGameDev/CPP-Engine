@@ -1,11 +1,12 @@
-#include "rendering/vulkan_application.h"
+#include "rendering/vulkan_render_context.h"
 #include "assets/material_loader.h"
+#include "assets/obj_loader.h"
 
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
 
-void VulkanApplication::createBuffer(vk::DeviceSize size,
+void VulkanRenderingContext::createBuffer(vk::DeviceSize size,
                                      vk::BufferUsageFlags usage,
                                      vk::MemoryPropertyFlags properties,
                                      vk::raii::Buffer &buffer,
@@ -25,7 +26,7 @@ void VulkanApplication::createBuffer(vk::DeviceSize size,
   buffer.bindMemory(*bufferMemory, 0);
 }
 
-void VulkanApplication::copyBuffer(vk::raii::Buffer &srcBuffer,
+void VulkanRenderingContext::copyBuffer(vk::raii::Buffer &srcBuffer,
                                    vk::raii::Buffer &dstBuffer,
                                    vk::DeviceSize size) {
   vk::CommandBufferAllocateInfo allocInfo{.commandPool = *commandPool,
@@ -51,7 +52,7 @@ void VulkanApplication::copyBuffer(vk::raii::Buffer &srcBuffer,
   queue.waitIdle();
 }
 
-void VulkanApplication::createCubeMesh() {
+void VulkanRenderingContext::createCubeMesh() {
   constexpr uint32_t SUBDIVISIONS = 32;
 
   std::vector<Vertex> vertices;
@@ -182,4 +183,57 @@ void VulkanApplication::createCubeMesh() {
   cube.indexCount = static_cast<uint32_t>(indices.size());
   cube.material = &materials->getAsset("brick.mat");
   meshes.push_back(std::move(cube));
+}
+
+Mesh VulkanRenderingContext::loadObjMesh(const std::string &objPath,
+                                         MaterialAsset *material) {
+  ObjData data = loadObj(objPath);
+
+  Mesh mesh{};
+  mesh.indexCount = static_cast<uint32_t>(data.indices.size());
+  mesh.material = material;
+
+  // Vertex buffer
+  vk::DeviceSize vertexBufferSize = sizeof(Vertex) * data.vertices.size();
+  vk::raii::Buffer vertexStagingBuffer{nullptr};
+  vk::raii::DeviceMemory vertexStagingMemory{nullptr};
+  createBuffer(vertexBufferSize, vk::BufferUsageFlagBits::eTransferSrc,
+               vk::MemoryPropertyFlagBits::eHostVisible |
+                   vk::MemoryPropertyFlagBits::eHostCoherent,
+               vertexStagingBuffer, vertexStagingMemory);
+
+  void *mapped = vertexStagingMemory.mapMemory(0, vertexBufferSize);
+  memcpy(mapped, data.vertices.data(), vertexBufferSize);
+  vertexStagingMemory.unmapMemory();
+
+  createBuffer(vertexBufferSize,
+               vk::BufferUsageFlagBits::eVertexBuffer |
+                   vk::BufferUsageFlagBits::eTransferDst,
+               vk::MemoryPropertyFlagBits::eDeviceLocal, mesh.vertexBuffer,
+               mesh.vertexMemory);
+
+  copyBuffer(vertexStagingBuffer, mesh.vertexBuffer, vertexBufferSize);
+
+  // Index buffer
+  vk::DeviceSize indexBufferSize = sizeof(uint32_t) * data.indices.size();
+  vk::raii::Buffer indexStagingBuffer{nullptr};
+  vk::raii::DeviceMemory indexStagingMemory{nullptr};
+  createBuffer(indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc,
+               vk::MemoryPropertyFlagBits::eHostVisible |
+                   vk::MemoryPropertyFlagBits::eHostCoherent,
+               indexStagingBuffer, indexStagingMemory);
+
+  mapped = indexStagingMemory.mapMemory(0, indexBufferSize);
+  memcpy(mapped, data.indices.data(), indexBufferSize);
+  indexStagingMemory.unmapMemory();
+
+  createBuffer(indexBufferSize,
+               vk::BufferUsageFlagBits::eIndexBuffer |
+                   vk::BufferUsageFlagBits::eTransferDst,
+               vk::MemoryPropertyFlagBits::eDeviceLocal, mesh.indexBuffer,
+               mesh.indexMemory);
+
+  copyBuffer(indexStagingBuffer, mesh.indexBuffer, indexBufferSize);
+
+  return mesh;
 }

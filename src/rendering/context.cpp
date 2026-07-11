@@ -1,9 +1,9 @@
-#include "rendering/vulkan_application.h"
+#include "rendering/vulkan_render_context.h"
 
 #include <cstdint>
 #include <iostream>
 
-void VulkanApplication::createInstance() {
+void VulkanRenderingContext::createInstance() {
   vk::ApplicationInfo appInfo;
   appInfo.pApplicationName = "Hello Triangle";
   appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -56,7 +56,7 @@ void VulkanApplication::createInstance() {
   instance = vk::raii::Instance(context, createInfo);
 }
 
-std::vector<const char *> VulkanApplication::getRequiredInstanceExtensions() {
+std::vector<const char *> VulkanRenderingContext::getRequiredInstanceExtensions() {
   uint32_t glfwExtensionCount = 0;
   auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
@@ -68,7 +68,7 @@ std::vector<const char *> VulkanApplication::getRequiredInstanceExtensions() {
   return extensions;
 }
 
-void VulkanApplication::setupDebugMessenger() {
+void VulkanRenderingContext::setupDebugMessenger() {
   if (!enableValidationLayers)
     return;
   vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(
@@ -81,12 +81,12 @@ void VulkanApplication::setupDebugMessenger() {
   vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
       .messageSeverity = severityFlags,
       .messageType = messageTypeFlags,
-      .pfnUserCallback = &VulkanApplication::debugCallback};
+      .pfnUserCallback = &VulkanRenderingContext::debugCallback};
   debugMessenger =
       instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
 }
 
-VKAPI_ATTR vk::Bool32 VKAPI_CALL VulkanApplication::debugCallback(
+VKAPI_ATTR vk::Bool32 VKAPI_CALL VulkanRenderingContext::debugCallback(
     vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
     vk::DebugUtilsMessageTypeFlagsEXT type,
     const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {

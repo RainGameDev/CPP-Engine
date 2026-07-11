@@ -2,7 +2,7 @@
 #include "assets/material_loader.h"
 #include "assets/shader_loader.h"
 #include "rendering/vertex.h"
-#include "rendering/vulkan_application.h"
+#include "rendering/vulkan_render_context.h"
 #include "vulkan/vulkan.hpp"
 
 #include <cstdint>
@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <vector>
 
-void VulkanApplication::createGraphicsPipelineLayout() {
+void VulkanRenderingContext::createGraphicsPipelineLayout() {
   std::array<vk::DescriptorSetLayout, 2> setLayouts = {descriptorSetLayout,
                                                        materialSetLayout};
 
@@ -30,7 +30,7 @@ void VulkanApplication::createGraphicsPipelineLayout() {
   pipelineLayout = vk::raii::PipelineLayout(device, pipelineLayoutInfo);
 }
 
-vk::Pipeline VulkanApplication::getOrCreatePipeline(const ShaderKey &key) {
+vk::Pipeline VulkanRenderingContext::getOrCreatePipeline(const ShaderKey &key) {
   if (auto it = graphicsPipelines.find(key); it != graphicsPipelines.end()) {
     return **it->second;
   }
@@ -38,7 +38,7 @@ vk::Pipeline VulkanApplication::getOrCreatePipeline(const ShaderKey &key) {
   return **graphicsPipelines[key];
 }
 
-void VulkanApplication::createPipelineForKey(const ShaderKey &key) {
+void VulkanRenderingContext::createPipelineForKey(const ShaderKey &key) {
   auto *shaders = assetManager.getLoader<ShaderAsset>();
 
   std::cout << key.fragment + " " + key.vertex << std::endl;
@@ -95,6 +95,13 @@ void VulkanApplication::createPipelineForKey(const ShaderKey &key) {
   vk::PipelineInputAssemblyStateCreateInfo inputAssembly{
       .topology = vk::PrimitiveTopology::eTriangleList};
 
+  vk::PipelineDepthStencilStateCreateInfo depthStencil{
+      .depthTestEnable = vk::True,
+      .depthWriteEnable = vk::True,
+      .depthCompareOp = vk::CompareOp::eLess,
+      .depthBoundsTestEnable = vk::False,
+      .stencilTestEnable = vk::False};
+
   auto bindingDesc = Vertex::getBindingDescription();
   auto attribDescs = Vertex::getAttributeDescriptions();
 
@@ -115,12 +122,14 @@ void VulkanApplication::createPipelineForKey(const ShaderKey &key) {
            .pViewportState = &viewportState,
            .pRasterizationState = &rasterizer,
            .pMultisampleState = &multisampling,
+           .pDepthStencilState = &depthStencil,
            .pColorBlendState = &colorBlending,
            .pDynamicState = &dynamicState,
            .layout = pipelineLayout,
            .renderPass = nullptr},
           {.colorAttachmentCount = 1,
-           .pColorAttachmentFormats = &swapChainSurfaceFormat.format}};
+           .pColorAttachmentFormats = &swapChainSurfaceFormat.format,
+           .depthAttachmentFormat = depthFormat}};
 
   auto pipeline = vk::raii::Pipeline(
       device, nullptr,

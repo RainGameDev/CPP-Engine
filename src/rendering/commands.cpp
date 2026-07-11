@@ -1,19 +1,19 @@
 #include "assets/material_loader.h"
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
-#include "rendering/vulkan_application.h"
+#include "rendering/vulkan_render_context.h"
 
 #include <cstdint>
 #include <iostream>
 
-void VulkanApplication::createCommandPool() {
+void VulkanRenderingContext::createCommandPool() {
   vk::CommandPoolCreateInfo poolInfo{
       .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
       .queueFamilyIndex = queueIndex};
   commandPool = vk::raii::CommandPool(device, poolInfo);
 }
 
-void VulkanApplication::createCommandBuffer() {
+void VulkanRenderingContext::createCommandBuffer() {
   vk::CommandBufferAllocateInfo allocInfo{.commandPool = commandPool,
                                           .level =
                                               vk::CommandBufferLevel::ePrimary,
@@ -22,7 +22,7 @@ void VulkanApplication::createCommandBuffer() {
       std::move(vk::raii::CommandBuffers(device, allocInfo).front());
 }
 
-void VulkanApplication::recordCommandBuffer(uint32_t imageIndex,
+void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
                                             uint32_t currentFrame) {
   commandBuffer.begin({});
   transition_image_layout(imageIndex, vk::ImageLayout::eUndefined,
@@ -32,18 +32,29 @@ void VulkanApplication::recordCommandBuffer(uint32_t imageIndex,
                           vk::PipelineStageFlagBits2::eColorAttachmentOutput);
 
   vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.25f, 1.0f, 1.0f);
-  vk::RenderingAttachmentInfo attachmentInfo = {
+  vk::ClearValue depthClear = vk::ClearDepthStencilValue(1.0f, 0);
+  std::array<vk::ClearValue, 2> clearValues = {clearColor, depthClear};
+
+  vk::RenderingAttachmentInfo colorAttachmentInfo = {
       .imageView = swapChainImageViews[imageIndex],
       .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
       .loadOp = vk::AttachmentLoadOp::eClear,
       .storeOp = vk::AttachmentStoreOp::eStore,
       .clearValue = clearColor};
 
+  vk::RenderingAttachmentInfo depthAttachmentInfo = {
+      .imageView = depthImageView,
+      .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+      .loadOp = vk::AttachmentLoadOp::eClear,
+      .storeOp = vk::AttachmentStoreOp::eDontCare,
+      .clearValue = depthClear};
+
   vk::RenderingInfo renderingInfo = {
       .renderArea = {.offset = {0, 0}, .extent = swapChainExtent},
       .layerCount = 1,
       .colorAttachmentCount = 1,
-      .pColorAttachments = &attachmentInfo};
+      .pColorAttachments = &colorAttachmentInfo,
+      .pDepthAttachment = &depthAttachmentInfo};
 
   commandBuffer.beginRendering(renderingInfo);
 
@@ -106,7 +117,7 @@ void VulkanApplication::recordCommandBuffer(uint32_t imageIndex,
   commandBuffer.end();
 }
 
-void VulkanApplication::transition_image_layout(
+void VulkanRenderingContext::transition_image_layout(
     uint32_t imageIndex, vk::ImageLayout oldLayout, vk::ImageLayout newLayout,
     vk::AccessFlags2 srcAccessMask, vk::AccessFlags2 dstAccessMask,
     vk::PipelineStageFlags2 srcStageMask,

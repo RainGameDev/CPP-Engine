@@ -1,10 +1,10 @@
-#include "rendering/vulkan_application.h"
+#include "rendering/vulkan_render_context.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
 
-bool VulkanApplication::isDeviceSuitable(
+bool VulkanRenderingContext::isDeviceSuitable(
     vk::raii::PhysicalDevice const &physicalDevice) {
   bool supportsVulkan1_3 =
       physicalDevice.getProperties().apiVersion >= vk::ApiVersion13;
@@ -46,7 +46,7 @@ bool VulkanApplication::isDeviceSuitable(
          supportsAllRequiredExtensions && supportsRequiredFeatures;
 }
 
-void VulkanApplication::createSurface() {
+void VulkanRenderingContext::createSurface() {
   VkSurfaceKHR _surface;
   if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
     throw std::runtime_error("failed to create window surface!");
@@ -54,7 +54,7 @@ void VulkanApplication::createSurface() {
   surface = vk::raii::SurfaceKHR(instance, _surface);
 }
 
-void VulkanApplication::pickPhysicalDevice() {
+void VulkanRenderingContext::pickPhysicalDevice() {
   std::vector<vk::raii::PhysicalDevice> physicalDevices =
       instance.enumeratePhysicalDevices();
   auto const devIter =
@@ -67,7 +67,7 @@ void VulkanApplication::pickPhysicalDevice() {
   physicalDevice = *devIter;
 }
 
-void VulkanApplication::createLogicalDevice() {
+void VulkanRenderingContext::createLogicalDevice() {
   std::vector<vk::QueueFamilyProperties> queueFamilyProperties =
       physicalDevice.getQueueFamilyProperties();
 

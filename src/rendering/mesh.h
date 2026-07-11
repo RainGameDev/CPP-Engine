@@ -1,12 +1,11 @@
 #pragma once
 
+#include "assets/material_loader.h"
 #include <cstdint>
 
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
-
-struct MaterialAsset;
 
 struct Mesh {
   vk::raii::Buffer vertexBuffer{nullptr};

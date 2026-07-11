@@ -1,10 +1,10 @@
-#include "rendering/vulkan_application.h"
+#include "rendering/vulkan_render_context.h"
 
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
 
-void VulkanApplication::createSyncObjects() {
+void VulkanRenderingContext::createSyncObjects() {
   presentCompleteSemaphore =
       vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
   renderFinishedSemaphore =
@@ -13,7 +13,7 @@ void VulkanApplication::createSyncObjects() {
       vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
 }
 
-void VulkanApplication::drawFrame() {
+void VulkanRenderingContext::drawFrame() {
   auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
   if (fenceResult != vk::Result::eSuccess) {
     throw std::runtime_error("failed to wait for fence!");
@@ -27,6 +27,7 @@ void VulkanApplication::drawFrame() {
       result == vk::Result::eSuboptimalKHR) {
     createSwapChain();
     createImageViews();
+    createDepthResources();
     updateUniformBuffer(currentFrame % maxConcurrentFrames);
     return;
   }
@@ -60,6 +61,7 @@ void VulkanApplication::drawFrame() {
     framebufferResized = false;
     createSwapChain();
     createImageViews();
+    createDepthResources();
     updateUniformBuffer(currentFrame % maxConcurrentFrames);
     currentFrame = (currentFrame + 1) % maxConcurrentFrames;
     return;

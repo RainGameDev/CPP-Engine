@@ -1,9 +1,9 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
-#include "rendering/vulkan_application.h"
+#include "rendering/vulkan_render_context.h"
 
-void VulkanApplication::initImGui() {
+void VulkanRenderingContext::initImGui() {
   // Create its descripotrs.
   vk::DescriptorPoolSize poolSize{
       .type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1};
@@ -46,7 +46,7 @@ void VulkanApplication::initImGui() {
   ImGui_ImplVulkan_Init(&initInfo);
 }
 
-void VulkanApplication::cleanupImGui() {
+void VulkanRenderingContext::cleanupImGui() {
   device.waitIdle();
   ImGui_ImplVulkan_Shutdown();
   ImGui_ImplGlfw_Shutdown();

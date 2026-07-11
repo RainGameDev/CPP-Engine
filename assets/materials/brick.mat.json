@@ -1,13 +1,13 @@
 {
   "name": "brick",
-  "vertexShader": "test.vert",
-  "fragmentShader": "test.frag",
+  "vertexShader": "pbr_model_standard.vert",
+  "fragmentShader": "pbr_model_standard.frag",
   "albedoMap": "steelarmor",
   "normalMap": "steelarmor_n",
   "rmaosMap": "steelarmor_rmaos",
   "heightMap": "",
   "parallaxStrength": 0.2,
   "baseColorFactor": [1.0, 0.95, 0.9, 1.0],
-  "metallicFactor": 0.0,
+  "metallicFactor": 0.8,
   "roughnessFactor": 0.85
 }

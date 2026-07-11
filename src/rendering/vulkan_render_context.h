@@ -12,7 +12,6 @@
 #include <GLFW/glfw3.h>
 
 #include "../assets/asset_manager.h"
-#include "camera.h"
 #include "mesh.h"
 #include "ubo.h"
 #include "vertex.h"
@@ -35,13 +34,21 @@ constexpr bool enableValidationLayers = false;
 constexpr bool enableValidationLayers = true;
 #endif
 
-class VulkanApplication {
+class VulkanRenderingContext {
 public:
   bool framebufferResized = false;
-  void run();
 
-private:
+  void init(GLFWwindow *window);
+  void cleanup();
+  void drawFrame();
+  void updateUniformBuffer(uint32_t frame, const UniformBufferObject &ubo);
+  void updateUniformBuffer(uint32_t frame);
+  void addMesh(Mesh mesh);
+
+  UniformBufferObject lastUbo{};
+
   GLFWwindow *window = nullptr;
+
   vk::raii::Context context;
   vk::raii::Instance instance = nullptr;
   vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
@@ -58,6 +65,11 @@ private:
   vk::SurfaceFormatKHR swapChainSurfaceFormat;
   vk::Extent2D swapChainExtent;
   std::vector<vk::raii::ImageView> swapChainImageViews;
+
+  vk::raii::Image depthImage{nullptr};
+  vk::raii::DeviceMemory depthImageMemory{nullptr};
+  vk::raii::ImageView depthImageView{nullptr};
+  vk::Format depthFormat = vk::Format::eD32Sfloat;
 
   vk::raii::PipelineLayout pipelineLayout = nullptr;
 
@@ -82,18 +94,13 @@ private:
 
   vk::raii::DescriptorPool imguiPool = nullptr;
 
-  static double lastX, lastY;
-  static bool firstMouse;
-  Camera camera;
-
   uint32_t currentFrame = 0;
 
   std::vector<Mesh> meshes;
 
-  void initVulkan();
-  void mainLoop();
-  void cleanup();
+  AssetManager assetManager;
 
+  // Vulkan setup
   void createInstance();
   std::vector<const char *> getRequiredInstanceExtensions();
   void setupDebugMessenger();
@@ -113,6 +120,8 @@ private:
   vk::SurfaceFormatKHR chooseSwapSurfaceFormat(
       const std::vector<vk::SurfaceFormatKHR> &availableFormats);
   void createImageViews();
+  void createDepthResources();
+  vk::Format findSupportedDepthFormat();
   void createCommandPool();
   void createCommandBuffer();
   void recordCommandBuffer(uint32_t imageIndex, uint32_t currentFrame);
@@ -130,14 +139,12 @@ private:
 
   // Buffers
   void createUniformBuffers();
-  void updateUniformBuffer(uint32_t currentFrame);
-
-  /// Descriptors
   void createDescriptorSetLayout();
   void createDescriptorSets();
   void createDescriptorPool();
 
   void createCubeMesh();
+  Mesh loadObjMesh(const std::string &objPath, MaterialAsset *material);
   void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                     vk::MemoryPropertyFlags properties,
                     vk::raii::Buffer &buffer,
@@ -146,23 +153,12 @@ private:
                   vk::DeviceSize size);
 
   void createSyncObjects();
-  void drawFrame();
 
   void initImGui();
   void cleanupImGui();
-
-  void processInput(GLFWwindow *window, Camera &camera, float deltaTime);
-  static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
-
-  AssetManager assetManager;
 
   static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
       vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
       vk::DebugUtilsMessageTypeFlagsEXT type,
       const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *);
 };
-static void framebufferResizeCallback(GLFWwindow *window, int width,
-                                      int height) {
-  auto app = static_cast<VulkanApplication *>(glfwGetWindowUserPointer(window));
-  app->framebufferResized = true;
-}

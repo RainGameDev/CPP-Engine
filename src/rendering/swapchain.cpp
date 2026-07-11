@@ -1,11 +1,11 @@
-#include "rendering/vulkan_application.h"
+#include "rendering/vulkan_render_context.h"
 
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <limits>
 
-void VulkanApplication::createSwapChain() {
+void VulkanRenderingContext::createSwapChain() {
   device.waitIdle();
   vk::SurfaceCapabilitiesKHR surfaceCapabilities =
       physicalDevice.getSurfaceCapabilitiesKHR(*surface);
@@ -39,7 +39,7 @@ void VulkanApplication::createSwapChain() {
   swapChainImages = swapChain.getImages();
 }
 
-uint32_t VulkanApplication::chooseSwapMinImageCount(
+uint32_t VulkanRenderingContext::chooseSwapMinImageCount(
     vk::SurfaceCapabilitiesKHR const &surfaceCapabilities) {
   auto minImageCount = std::max(3u, surfaceCapabilities.minImageCount);
   if ((0 < surfaceCapabilities.maxImageCount) &&
@@ -49,7 +49,7 @@ uint32_t VulkanApplication::chooseSwapMinImageCount(
   return minImageCount;
 }
 
-vk::Extent2D VulkanApplication::chooseSwapExtent(
+vk::Extent2D VulkanRenderingContext::chooseSwapExtent(
     vk::SurfaceCapabilitiesKHR const &capabilities) {
   if (capabilities.currentExtent.width !=
       std::numeric_limits<uint32_t>::max()) {
@@ -64,7 +64,7 @@ vk::Extent2D VulkanApplication::chooseSwapExtent(
                                capabilities.maxImageExtent.height)};
 }
 
-vk::PresentModeKHR VulkanApplication::chooseSwapPresentMode(
+vk::PresentModeKHR VulkanRenderingContext::chooseSwapPresentMode(
     std::vector<vk::PresentModeKHR> const &availablePresentModes) {
   assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) {
     return presentMode == vk::PresentModeKHR::eFifo;
@@ -77,7 +77,7 @@ vk::PresentModeKHR VulkanApplication::chooseSwapPresentMode(
              : vk::PresentModeKHR::eFifo;
 }
 
-vk::SurfaceFormatKHR VulkanApplication::chooseSwapSurfaceFormat(
+vk::SurfaceFormatKHR VulkanRenderingContext::chooseSwapSurfaceFormat(
     const std::vector<vk::SurfaceFormatKHR> &availableFormats) {
   const auto formatIt =
       std::ranges::find_if(availableFormats, [](const auto &format) {
@@ -87,7 +87,7 @@ vk::SurfaceFormatKHR VulkanApplication::chooseSwapSurfaceFormat(
   return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
 }
 
-void VulkanApplication::createImageViews() {
+void VulkanRenderingContext::createImageViews() {
   swapChainImageViews.clear();
 
   vk::ImageViewCreateInfo imageViewCreateInfo{

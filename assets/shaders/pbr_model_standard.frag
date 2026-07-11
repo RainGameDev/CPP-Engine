@@ -109,7 +109,7 @@ void main() {
   vec3 N = normalize(TBN * texN);
 
   // Lighting setup
-  vec3 lightColor = vec3(15.0); // TODO: pass from UBO
+  vec3 lightColor = vec3(0.5); // TODO: pass from UBO
   vec3 lightDir   = normalize(vec3(1.0, 1.0, 1.0)); // TODO: pass from UBO
   vec3 camPos     = ubo.pos.xyz;
   vec3 V          = normalize(camPos - fragWorldPos);
