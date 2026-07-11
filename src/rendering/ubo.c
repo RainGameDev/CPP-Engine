@@ -1,4 +1,6 @@
+#include "assets/texture_loader.h"
 #include "rendering/vulkan_application.h"
+#include "vulkan/vulkan.hpp"
 
 #include <chrono>
 #include <glm/ext/matrix_transform.hpp>
@@ -34,15 +36,24 @@ void VulkanApplication::createUniformBuffers() {
 }
 
 void VulkanApplication::createDescriptorSetLayout() {
-  vk::DescriptorSetLayoutBinding uboLayoutBinding{
-      .binding = 0,
-      .descriptorType = vk::DescriptorType::eUniformBuffer,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eVertex,
-      .pImmutableSamplers = nullptr};
+  std::array<vk::DescriptorSetLayoutBinding, 2> bindings{
+      // UBO BINDING
+      {{.binding = 0,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eVertex,
+        .pImmutableSamplers = nullptr},
 
-  vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount = 1,
-                                               .pBindings = &uboLayoutBinding};
+       // ALBEDO TEXTURE BINDING
+       {.binding = 1,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eVertex,
+        .pImmutableSamplers = nullptr}}};
+
+  vk::DescriptorSetLayoutCreateInfo layoutInfo{
+      .bindingCount = static_cast<uint32_t>(bindings.size()),
+      .pBindings = bindings.data()};
 
   descriptorSetLayout = device.createDescriptorSetLayout(layoutInfo);
 }
@@ -58,21 +69,40 @@ void VulkanApplication::createDescriptorSets() {
 
   descriptorSets = device.allocateDescriptorSets(allocInfo);
 
-  vk::DescriptorBufferInfo bufferInfo{.offset = 0,
-                                      .range = sizeof(UniformBufferObject)};
-
   for (size_t i = 0; i < maxConcurrentFrames; i++) {
-    bufferInfo.buffer = *uniformBuffers[i].buffer;
+    // Binding 0 UBO Binding
+    vk::DescriptorBufferInfo bufferInfo{.buffer = *uniformBuffers[i].buffer,
+                                        .offset = 0,
+                                        .range = sizeof(UniformBufferObject)};
 
-    vk::WriteDescriptorSet descriptorWrite{
+    vk::WriteDescriptorSet uboWrite{.dstSet = descriptorSets[i],
+                                    .dstBinding = 0,
+                                    .dstArrayElement = 0,
+                                    .descriptorCount = 1,
+                                    .descriptorType =
+                                        vk::DescriptorType::eUniformBuffer,
+                                    .pBufferInfo = &bufferInfo};
+
+    // Binding 1 texture sampler
+    auto *textures = assetManager.getLoader<TextureAsset>();
+    auto &tex = textures->getAsset("dirt_albedo");
+
+    vk::DescriptorImageInfo imageInfo{
+        .sampler = *tex.sampler,
+        .imageView = *tex.imageView,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+
+    vk::WriteDescriptorSet samplerWrite{
         .dstSet = descriptorSets[i],
-        .dstBinding = 0,
+        .dstBinding = 1,
         .dstArrayElement = 0,
         .descriptorCount = 1,
-        .descriptorType = vk::DescriptorType::eUniformBuffer,
-        .pBufferInfo = &bufferInfo};
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .pImageInfo = &imageInfo};
 
-    device.updateDescriptorSets(descriptorWrite, nullptr);
+    // Send both writes at once
+    std::array<vk::WriteDescriptorSet, 2> writes = {uboWrite, samplerWrite};
+    device.updateDescriptorSets(writes, nullptr);
   }
 }
 

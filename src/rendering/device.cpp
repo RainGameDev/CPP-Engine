@@ -39,8 +39,7 @@ bool VulkanApplication::isDeviceSuitable(
           .dynamicRendering &&
       features.template get<vk::PhysicalDeviceVulkan13Features>()
           .synchronization2 &&
-      features
-          .template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>()
+      features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>()
           .extendedDynamicState;
 
   return supportsVulkan1_3 && supportsGraphics &&
@@ -91,11 +90,12 @@ void VulkanApplication::createLogicalDevice() {
                      vk::PhysicalDeviceVulkan11Features,
                      vk::PhysicalDeviceVulkan13Features,
                      vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
-      featureChain = {
-          {},
-          {.shaderDrawParameters = true},
-          {.synchronization2 = true, .dynamicRendering = true},
-          {.extendedDynamicState = true}};
+      featureChain = {{},
+                      {
+                          .shaderDrawParameters = true,
+                      },
+                      {.synchronization2 = true, .dynamicRendering = true},
+                      {.extendedDynamicState = true}};
 
   float queuePriority = 0.5f;
   vk::DeviceQueueCreateInfo deviceQueueCreateInfo{

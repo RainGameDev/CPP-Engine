@@ -7,14 +7,14 @@
 
 Camera::Camera(glm::vec3 position, glm::vec3 up, float yaw, float pitch)
     : position(position), worldUp(up), yaw(yaw), pitch(pitch),
-      movementSpeed(2.5f), mouseSensitivity(0.1f), fov(45.0f) {
+      movementSpeed(2.5f), mouseSensitivity(0.1f), fov(90.0f) {
   updateCameraVectors();
 }
 
 void Camera::processKeyboard(glm::vec3 inputDirection, float deltaTime) {
   glm::vec3 forward = glm::normalize(glm::vec3(front.x, 0.0f, front.z));
-  glm::vec3 movement = forward * inputDirection.z +
-                       right * inputDirection.x + worldUp * inputDirection.y;
+  glm::vec3 movement = forward * inputDirection.z + right * inputDirection.x +
+                       worldUp * inputDirection.y;
   position += movement * movementSpeed * deltaTime;
 }
 

@@ -1,10 +1,13 @@
 #include "rendering/vulkan_application.h"
+#include "assets/shader_loader.h"
+#include "assets/texture_loader.h"
 #include "glm/ext/vector_float3.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 #include <GLFW/glfw3.h>
+#include <memory>
 #include <print>
 
 void VulkanApplication::run() {
@@ -38,6 +41,8 @@ void VulkanApplication::initVulkan() {
   createSurface();
   pickPhysicalDevice();
   createLogicalDevice();
+  assetManager.addLoader(std::make_unique<ShaderLoader>(device));
+  assetManager.loadDirectory("assets/shaders");
   createSwapChain();
   createImageViews();
   createDescriptorSetLayout();
@@ -46,9 +51,15 @@ void VulkanApplication::initVulkan() {
   createDescriptorSets();
   createGraphicsPipeline();
   createCommandPool();
+
+  assetManager.addLoader(std::make_unique<TextureLoader>(
+      device, physicalDevice, commandPool, queue, queueIndex));
+
   createCubeMesh();
   createCommandBuffer();
   createSyncObjects();
+
+  assetManager.loadDirectory("assets/textures");
 
   initImGui();
 }

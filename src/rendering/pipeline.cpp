@@ -1,5 +1,5 @@
 
-#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
+#include "assets/shader_loader.h"
 #include "rendering/vertex.h"
 #include "rendering/vulkan_application.h"
 
@@ -9,19 +9,19 @@
 #include <vector>
 
 void VulkanApplication::createGraphicsPipeline() {
-  auto fragCode = readFile("src/assets/shaders/sdr_default_model.frag.spv");
-  auto vertCode = readFile("src/assets/shaders/sdr_default_model.vert.spv");
 
-  vk::raii::ShaderModule fragShader = createShaderModule(fragCode);
-  vk::raii::ShaderModule vertShader = createShaderModule(vertCode);
+  auto *shaders = assetManager.getLoader<ShaderAsset>();
+
+  auto &vertModule = shaders->getAsset("sdr_default_model.vert").module;
+  auto &fragModule = shaders->getAsset("sdr_default_model.frag").module;
 
   vk::PipelineShaderStageCreateInfo vertStageInfo{
       .stage = vk::ShaderStageFlagBits::eVertex,
-      .module = vertShader,
+      .module = vertModule,
       .pName = "main"};
   vk::PipelineShaderStageCreateInfo fragStageInfo{
       .stage = vk::ShaderStageFlagBits::eFragment,
-      .module = fragShader,
+      .module = fragModule,
       .pName = "main"};
 
   vk::PipelineShaderStageCreateInfo shaderStages[] = {vertStageInfo,
@@ -118,25 +118,4 @@ void VulkanApplication::createGraphicsPipeline() {
   graphicsPipeline = vk::raii::Pipeline(
       device, nullptr,
       pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
-}
-
-vk::raii::ShaderModule
-VulkanApplication::createShaderModule(const std::vector<char> &code) const {
-  vk::ShaderModuleCreateInfo createInfo{
-      .codeSize = code.size() * sizeof(char),
-      .pCode = reinterpret_cast<const uint32_t *>(code.data())};
-  vk::raii::ShaderModule shaderModule{device, createInfo};
-  return shaderModule;
-}
-
-std::vector<char> VulkanApplication::readFile(const std::string &filename) {
-  std::ifstream file(filename, std::ios::ate | std::ios::binary);
-  if (!file.is_open()) {
-    throw std::runtime_error("failed to open file: " + filename);
-  }
-  std::vector<char> buffer(file.tellg());
-  file.seekg(0, std::ios::beg);
-  file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-  file.close();
-  return buffer;
 }

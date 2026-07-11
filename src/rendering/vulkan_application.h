@@ -8,6 +8,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include "../assets/asset_manager.h"
 #include "camera.h"
 #include "mesh.h"
 #include "ubo.h"
@@ -137,10 +138,8 @@ private:
 
   void processInput(GLFWwindow *window, Camera &camera, float deltaTime);
   static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
-  [[nodiscard]] vk::raii::ShaderModule
-  createShaderModule(const std::vector<char> &code) const;
 
-  static std::vector<char> readFile(const std::string &filename);
+  AssetManager assetManager;
 
   static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
       vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
