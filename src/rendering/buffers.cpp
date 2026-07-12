@@ -213,7 +213,7 @@ void VulkanRenderingContext::createCubeMesh() {
   cube.material = &materials->getAsset("brick.mat");
 
   auto entity = world->create_entity();
-  world->add_component(entity, MeshComponent{std::move(cube)});
+  world->add_component(entity, MeshComponent{.mesh = std::move(cube)});
   world->add_component(entity, TransformComponent{});
 }
 

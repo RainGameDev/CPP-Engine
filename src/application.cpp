@@ -47,13 +47,13 @@ void Application::run() {
                                      .intensity = 1.0f,
                                      .color = glm::vec3(1.0, 0.0, 0.0),
                                      .isEmitting = true});
-  world.add_component(lightEntity, TransformComponent{{5.0f, 1.0f, 5.0f}});
+  world.add_component(lightEntity, TransformComponent{.position = {5.0f, 1.0f, 5.0f}});
 
   debugIndicatorEntity = world.create_entity();
   world.get_storage<NameComponent>().get(debugIndicatorEntity)->setName("Debug Indicator");
   auto indicatorMesh = renderer.createIndicatorMesh();
   world.add_component(debugIndicatorEntity,
-                      MeshComponent{std::move(indicatorMesh)});
+                      MeshComponent{.mesh = std::move(indicatorMesh)});
   world.add_component(debugIndicatorEntity, TransformComponent{});
 
   mainLoop();

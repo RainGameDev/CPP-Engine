@@ -1,6 +1,10 @@
+#pragma once
+
+#include "ecs/component.h"
+#include "imgui.h"
 #include <glm/glm.hpp>
 
-class Camera {
+class Camera : public Component<Camera> {
 private:
   glm::vec3 front;
   glm::vec3 up;
@@ -36,4 +40,10 @@ public:
   glm::vec3 getPosition() const { return position; }
   glm::vec3 getFront() const { return front; }
   float getZoom() const { return fov; }
+
+  void inspect(EntityId) {
+    ImGui::SeparatorText("Camera");
+
+    ImGui::DragFloat("Fov", &fov, 0.1f);
+  }
 };

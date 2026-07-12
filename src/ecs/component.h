@@ -10,15 +10,19 @@ struct ComponentTag {};
 template <typename Derived> struct Component : ComponentTag {};
 
 template <typename T>
-concept ComponentType = std::derived_from<T, ComponentTag>;
+concept ComponentType =
+    std::derived_from<T, ComponentTag> && requires(T &t, EntityId id) {
+      { t.inspect(id) };
+    };
 
 struct IComponentStorage {
   virtual ~IComponentStorage() = default;
   virtual bool contains(EntityId id) const = 0;
   virtual void remove(EntityId id) = 0;
+  virtual void inspect(EntityId id) = 0;
 };
 
-template <typename T> class ComponentStorage : public IComponentStorage {
+template <ComponentType T> class ComponentStorage : public IComponentStorage {
   static constexpr std::uint32_t NONE = static_cast<std::uint32_t>(-1);
 
 public:
@@ -63,6 +67,11 @@ public:
     dense.pop_back();
     denseEntities.pop_back();
     sparse[id] = NONE;
+  }
+
+  void inspect(EntityId id) override {
+    if (T *comp = get(id))
+      comp->inspect(id);
   }
 
   std::size_t size() const { return dense.size(); }

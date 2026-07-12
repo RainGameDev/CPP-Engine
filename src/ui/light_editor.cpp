@@ -102,6 +102,8 @@ void inspector(World &world) {
         world.get_component<NameComponent>(editorState.selectedID)->name;
     ImGui::Text("%s", name.c_str());
 
+    world.inspect_entity(editorState.selectedID);
+
     ImGui::Separator();
   }
 

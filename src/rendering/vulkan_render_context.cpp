@@ -45,14 +45,14 @@ void VulkanRenderingContext::init(GLFWwindow *window, World &ecsWorld) {
   auto mesh =
       loadObjMesh("assets/models/mesh.obj", &materials->getAsset("brick.mat"));
   auto entity = world->create_entity();
-  world->add_component(entity, MeshComponent{std::move(mesh)});
+  world->add_component(entity, MeshComponent{.mesh = std::move(mesh)});
   world->add_component(entity, TransformComponent{});
 
   auto mesh2 =
       loadObjMesh("assets/models/mesh.obj", &materials->getAsset("brick.mat"));
   auto entity2 = world->create_entity();
-  world->add_component(entity2, MeshComponent{std::move(mesh2)});
-  world->add_component(entity2, TransformComponent{{20.0f, 0.0f, 0.0f}});
+  world->add_component(entity2, MeshComponent{.mesh = std::move(mesh2)});
+  world->add_component(entity2, TransformComponent{.position = {20.0f, 0.0f, 0.0f}});
 
   createCommandBuffer();
   createSyncObjects();

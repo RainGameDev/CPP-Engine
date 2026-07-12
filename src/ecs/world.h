@@ -45,14 +45,14 @@ public:
   }
 
   /// Adds a component of type T to entity ID.
-  template <typename T> T &add_component(EntityId id, T component) {
+  template <ComponentType T> T &add_component(EntityId id, T component) {
     return get_storage<T>().insert(id, std::move(component));
   }
-  template <typename T> T *get_component(EntityId id) {
+  template <ComponentType T> T *get_component(EntityId id) {
     return get_storage<T>().get(id);
   }
 
-  template <typename T> ComponentStorage<T> &get_storage() {
+  template <ComponentType T> ComponentStorage<T> &get_storage() {
     auto key = std::type_index(typeid(T));
     auto it = storages.find(key);
     if (it == storages.end()) {
@@ -65,6 +65,13 @@ public:
   }
 
   uint32_t entityCount() { return nextID - 1; }
+
+  void inspect_entity(EntityId id) {
+    for (auto &[_, storage] : storages) {
+      if (storage->contains(id))
+        storage->inspect(id);
+    }
+  }
 
 private:
   EntityId nextID = 0;

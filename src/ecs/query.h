@@ -2,9 +2,10 @@
 
 #include <functional>
 
+#include "component.h"
 #include "world.h"
 
-template <typename... Components> class Query {
+template <ComponentType... Components> class Query {
 public:
   explicit Query(World &world) : world_(world) {}
 
