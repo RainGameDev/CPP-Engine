@@ -120,10 +120,13 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
           vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
           {*descriptorSets[currentFrame], *mat->descriptorSet}, {dynamicOffset});
 
-      MaterialPushConstants pc{.baseColorFactor = mat->baseColorFactor,
-                               .metallicFactor = mat->metallicFactor,
-                               .roughnessFactor = mat->roughnessFactor,
-                               .parallaxStrength = mat->parallaxStrength};
+      MaterialPushConstants pc{
+          .baseColorFactor = entry.mc->overrideColor.a > 0.0f
+                                 ? entry.mc->overrideColor
+                                 : mat->baseColorFactor,
+          .metallicFactor = mat->metallicFactor,
+          .roughnessFactor = mat->roughnessFactor,
+          .parallaxStrength = mat->parallaxStrength};
       commandBuffer.pushConstants(*pipelineLayout,
                                   vk::ShaderStageFlagBits::eVertex |
                                       vk::ShaderStageFlagBits::eFragment,

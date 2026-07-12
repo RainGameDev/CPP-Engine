@@ -3,6 +3,8 @@
 #include "ecs/components.h"
 #include "ecs/light.h"
 #include "ecs/query.h"
+#include "ecs/system_registry.h"
+#include "ecs/world.h"
 #include "glm/ext/vector_float3.hpp"
 
 #include "imgui.h"
@@ -10,6 +12,7 @@
 #include "imgui_impl_vulkan.h"
 #include <GLFW/glfw3.h>
 #include <cstdint>
+#include <print>
 
 void Application::run() {
   glfwInit();
@@ -34,9 +37,11 @@ void Application::run() {
   renderer.init(window, world);
 
   cameraEntity = world.create_entity();
+  world.get_storage<NameComponent>().get(cameraEntity)->setName("Camera");
   world.add_component(cameraEntity, Camera{});
 
-  auto lightEntity = world.create_entity();
+  lightEntity = world.create_entity();
+  world.get_storage<NameComponent>().get(lightEntity)->setName("Light");
   world.add_component(lightEntity,
                       LightComponent{.lightType = Directional{},
                                      .intensity = 1.0f,
@@ -44,10 +49,26 @@ void Application::run() {
                                      .isEmitting = true});
   world.add_component(lightEntity, TransformComponent{{5.0f, 1.0f, 5.0f}});
 
+  debugIndicatorEntity = world.create_entity();
+  world.get_storage<NameComponent>().get(debugIndicatorEntity)->setName("Debug Indicator");
+  auto indicatorMesh = renderer.createIndicatorMesh();
+  world.add_component(debugIndicatorEntity,
+                      MeshComponent{std::move(indicatorMesh)});
+  world.add_component(debugIndicatorEntity, TransformComponent{});
+
   mainLoop();
   renderer.cleanup();
   glfwDestroyWindow(window);
   glfwTerminate();
+}
+
+void Application::tick(float delta_seconds) {
+  fixedAccumulator += delta_seconds;
+  while (fixedAccumulator >= fixedTimeStep) {
+    schedule.run(Stage::FixedUpdate, world);
+    fixedAccumulator -= fixedTimeStep;
+  }
+  schedule.run(Stage::Update, world);
 }
 
 void Application::mainLoop() {
@@ -71,9 +92,25 @@ void Application::mainLoop() {
 
     renderer.updateUniformBuffer(renderer.currentFrame, ubo);
 
+    // Sync debug indicator to light
+    auto *lightTc = world.get_storage<TransformComponent>().get(lightEntity);
+    auto *lightLc = world.get_storage<LightComponent>().get(lightEntity);
+    auto *indTc =
+        world.get_storage<TransformComponent>().get(debugIndicatorEntity);
+    auto *indMc = world.get_storage<MeshComponent>().get(debugIndicatorEntity);
+    if (lightTc && lightLc && indTc && indMc) {
+      indTc->position = lightTc->position;
+      indTc->rotation = lightTc->rotation;
+      indTc->scale = glm::vec3(0.15f);
+      indMc->overrideColor = glm::vec4(lightLc->color, 1.0f);
+    }
+
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
+
+    // run all update functions
+    tick(deltaTime);
 
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
     ImGui::SetNextWindowBgAlpha(0.0f);
@@ -112,6 +149,25 @@ void Application::mainLoop() {
 void Application::cleanup() {}
 
 void Application::processInput(float deltaTime) {
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+    mouseCaptured = !mouseCaptured;
+    if (mouseCaptured) {
+      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+      if (glfwRawMouseMotionSupported())
+        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+      firstMouse = true;
+    } else {
+      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+      if (glfwRawMouseMotionSupported())
+        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+    }
+    while (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+      glfwPollEvents();
+  }
+
+  if (!mouseCaptured)
+    return;
+
   glm::vec3 inputDir = glm::vec3(0.0);
 
   if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
@@ -139,6 +195,9 @@ bool Application::firstMouse = true;
 
 void Application::mouse_callback(GLFWwindow *window, double xpos, double ypos) {
   auto *app = static_cast<Application *>(glfwGetWindowUserPointer(window));
+
+  if (!app->mouseCaptured)
+    return;
 
   if (firstMouse) {
     lastX = xpos;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "component.h"
+#include "components.h"
 #include "entity.h"
 #include <any>
 #include <cstdint>
@@ -10,14 +11,32 @@
 
 class World {
 public:
-  EntityId create_entity() { return nextID++; }
-
-  template <typename T, typename... Args> T &add_resource(Args &&...args) {
-    auto ptr = std::make_shared<T>(std::forward<Args>(args)...);
-    resources[std::type_index(typeid(T))] = ptr;
-    return *ptr;
+  EntityId create_entity() {
+    auto id = nextID++;
+    add_component(id, NameComponent{});
+    return id;
   }
 
+  /// Adds a resource of type T.
+  template <typename T, typename... Args> void add_resource(Args &&...args) {
+    if (has_resource<T>()) {
+      return;
+    }
+
+    auto ptr = std::make_shared<T>(std::forward<Args>(args)...);
+    resources[std::type_index(typeid(T))] = ptr;
+  }
+
+  /// Does the world have this resource?
+  template <typename T> bool has_resource() {
+    auto it = resources.find(std::type_index(typeid(T)));
+    if (it == resources.end())
+      return false;
+
+    return true;
+  }
+
+  /// Gets a resource of type T.
   template <typename T> T *get_resource() {
     auto it = resources.find(std::type_index(typeid(T)));
     if (it == resources.end())
@@ -25,8 +44,12 @@ public:
     return std::any_cast<std::shared_ptr<T>>(it->second).get();
   }
 
+  /// Adds a component of type T to entity ID.
   template <typename T> T &add_component(EntityId id, T component) {
     return get_storage<T>().insert(id, std::move(component));
+  }
+  template <typename T> T *get_component(EntityId id) {
+    return get_storage<T>().get(id);
   }
 
   template <typename T> ComponentStorage<T> &get_storage() {

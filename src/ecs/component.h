@@ -2,7 +2,15 @@
 
 #include "entity.h"
 #include <algorithm>
+#include <concepts>
 #include <vector>
+
+struct ComponentTag {};
+
+template <typename Derived> struct Component : ComponentTag {};
+
+template <typename T>
+concept ComponentType = std::derived_from<T, ComponentTag>;
 
 struct IComponentStorage {
   virtual ~IComponentStorage() = default;

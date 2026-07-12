@@ -148,6 +148,7 @@ public:
   void createDescriptorPool();
 
   void createCubeMesh();
+  Mesh createIndicatorMesh();
   Mesh loadObjMesh(const std::string &objPath, MaterialAsset *material);
   void ensureTransformBuffer(uint32_t frame, uint32_t meshCount);
   void updateLightBuffer(uint32_t frame);

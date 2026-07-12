@@ -3,9 +3,17 @@
 #include "rendering/mesh.h"
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/glm.hpp>
+#include <string>
+
+struct NameComponent {
+  std::string name{"Entity"};
+
+  void setName(const std::string &str) { name = str; }
+};
 
 struct MeshComponent {
   Mesh mesh;
+  glm::vec4 overrideColor{0.0f};
 };
 
 struct TransformComponent {

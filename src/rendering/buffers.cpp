@@ -217,6 +217,98 @@ void VulkanRenderingContext::createCubeMesh() {
   world->add_component(entity, TransformComponent{});
 }
 
+Mesh VulkanRenderingContext::createIndicatorMesh() {
+  float s = 0.5f;
+  std::vector<Vertex> vertices = {
+      // Top pyramid
+      {{0, s, 0}, {1, 1, 1}, {0, 0}, {1, 0, 0}, {0, 1, 0}},
+      {{-s, 0, -s}, {1, 1, 1}, {0, 0}, {-1, 0, 0}, {-1, 1, -1}},
+      {{s, 0, -s}, {1, 1, 1}, {0, 0}, {0, 0, -1}, {0, 1, -1}},
+      {{s, 0, s}, {1, 1, 1}, {0, 0}, {1, 0, 0}, {1, 1, 0}},
+      {{-s, 0, s}, {1, 1, 1}, {0, 0}, {0, 0, 1}, {0, 1, 1}},
+      // Bottom pyramid
+      {{0, -s, 0}, {1, 1, 1}, {0, 0}, {0, -1, 0}, {0, -1, 0}},
+      {{-s, 0, -s}, {1, 1, 1}, {0, 0}, {-1, 0, 0}, {-1, 1, -1}},
+      {{s, 0, -s}, {1, 1, 1}, {0, 0}, {0, 0, -1}, {0, 1, -1}},
+      {{s, 0, s}, {1, 1, 1}, {0, 0}, {1, 0, 0}, {1, 1, 0}},
+      {{-s, 0, s}, {1, 1, 1}, {0, 0}, {0, 0, 1}, {0, 1, 1}},
+  };
+
+  // Rebuild proper normals per face
+  auto fixNormal = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c) -> glm::vec3 {
+    return glm::normalize(glm::cross(b - a, c - a));
+  };
+
+  struct Face {
+    uint32_t i[3];
+  };
+  std::vector<Face> faces = {
+      // Top
+      {0, 1, 2}, {0, 2, 3}, {0, 3, 4}, {0, 4, 1},
+      // Bottom
+      {5, 7, 6}, {5, 8, 7}, {5, 9, 8}, {5, 6, 9},
+  };
+
+  std::vector<uint32_t> indices;
+  for (auto &f : faces) {
+    glm::vec3 n = fixNormal(vertices[f.i[0]].pos, vertices[f.i[1]].pos,
+                            vertices[f.i[2]].pos);
+    for (uint32_t i = 0; i < 3; i++) {
+      vertices[f.i[i]].normal = n;
+      indices.push_back(f.i[i]);
+    }
+  }
+
+  auto *materials = assetManager.getLoader<MaterialAsset>();
+  Mesh mesh{};
+
+  vk::DeviceSize vertexBufferSize = sizeof(Vertex) * vertices.size();
+  vk::raii::Buffer vertexStagingBuffer{nullptr};
+  vk::raii::DeviceMemory vertexStagingMemory{nullptr};
+  createBuffer(vertexBufferSize, vk::BufferUsageFlagBits::eTransferSrc,
+               vk::MemoryPropertyFlagBits::eHostVisible |
+                   vk::MemoryPropertyFlagBits::eHostCoherent,
+               vertexStagingBuffer, vertexStagingMemory);
+
+  void *mapped = vertexStagingMemory.mapMemory(0, vertexBufferSize);
+  memcpy(mapped, vertices.data(), vertexBufferSize);
+  vertexStagingMemory.unmapMemory();
+
+  createBuffer(vertexBufferSize,
+               vk::BufferUsageFlagBits::eVertexBuffer |
+                   vk::BufferUsageFlagBits::eTransferDst,
+               vk::MemoryPropertyFlagBits::eDeviceLocal, mesh.vertexBuffer,
+               mesh.vertexMemory);
+
+  copyBuffer(vertexStagingBuffer, mesh.vertexBuffer, vertexBufferSize);
+
+  vk::DeviceSize indexBufferSize = sizeof(uint32_t) * indices.size();
+  vk::raii::Buffer indexStagingBuffer{nullptr};
+  vk::raii::DeviceMemory indexStagingMemory{nullptr};
+  createBuffer(indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc,
+               vk::MemoryPropertyFlagBits::eHostVisible |
+                   vk::MemoryPropertyFlagBits::eHostCoherent,
+               indexStagingBuffer, indexStagingMemory);
+
+  mapped = indexStagingMemory.mapMemory(0, indexBufferSize);
+  memcpy(mapped, indices.data(), indexBufferSize);
+  indexStagingMemory.unmapMemory();
+
+  createBuffer(indexBufferSize,
+               vk::BufferUsageFlagBits::eIndexBuffer |
+                   vk::BufferUsageFlagBits::eTransferDst,
+               vk::MemoryPropertyFlagBits::eDeviceLocal, mesh.indexBuffer,
+               mesh.indexMemory);
+
+  copyBuffer(indexStagingBuffer, mesh.indexBuffer, indexBufferSize);
+
+  mesh.vertexCount = static_cast<uint32_t>(vertices.size());
+  mesh.indexCount = static_cast<uint32_t>(indices.size());
+  mesh.material = &materials->getAsset("debug.mat");
+
+  return mesh;
+}
+
 Mesh VulkanRenderingContext::loadObjMesh(const std::string &objPath,
                                          MaterialAsset *material) {
   ObjData data = loadObj(objPath);
