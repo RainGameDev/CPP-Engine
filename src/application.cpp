@@ -39,6 +39,10 @@ void Application::run() {
   cameraEntity = world.create_entity();
   world.get_storage<NameComponent>().get(cameraEntity)->setName("Camera");
   world.add_component(cameraEntity, Camera{});
+  world.add_component(cameraEntity, TransformComponent{
+                                       .position = {0.0f, 0.0f, -3.0f},
+                                       .rotation = {-90.0f, 0.0f, 0.0f},
+                                   });
 
   lightEntity = world.create_entity();
   world.get_storage<NameComponent>().get(lightEntity)->setName("Light");
@@ -82,10 +86,12 @@ void Application::mainLoop() {
     processInput(deltaTime);
 
     auto *cam = world.get_storage<Camera>().get(cameraEntity);
+    auto *camTc = world.get_storage<TransformComponent>().get(cameraEntity);
+    cam->updateCameraVectors(*camTc);
 
     UniformBufferObject ubo{};
-    ubo.view = cam->getViewMatrix();
-    ubo.pos = glm::vec4(cam->getPosition(), 0.0);
+    ubo.view = cam->getViewMatrix(*camTc);
+    ubo.pos = glm::vec4(cam->getPosition(*camTc), 0.0);
     ubo.proj = cam->getProjectionMatrix(renderer.swapChainExtent.width /
                                         (float)renderer.swapChainExtent.height);
     ubo.proj[1][1] *= -1;
@@ -121,7 +127,7 @@ void Application::mainLoop() {
                      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBackground |
                      ImGuiWindowFlags_AlwaysAutoResize);
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-    glm::vec3 position = cam->getPosition();
+    glm::vec3 position = cam->getPosition(*camTc);
     ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y,
                 position.z);
 
@@ -186,7 +192,8 @@ void Application::processInput(float deltaTime) {
     inputDir.x += 1.0;
 
   auto *cam = world.get_storage<Camera>().get(cameraEntity);
-  cam->processKeyboard(inputDir, deltaTime);
+  auto *camTc = world.get_storage<TransformComponent>().get(cameraEntity);
+  cam->processKeyboard(*camTc, inputDir, deltaTime);
 }
 
 double Application::lastX = 0.0;
@@ -211,5 +218,7 @@ void Application::mouse_callback(GLFWwindow *window, double xpos, double ypos) {
   lastY = ypos;
 
   auto *cam = app->world.get_storage<Camera>().get(app->cameraEntity);
-  cam->processMouseMovement(deltaX, deltaY);
+  auto *camTc =
+      app->world.get_storage<TransformComponent>().get(app->cameraEntity);
+  cam->processMouseMovement(*camTc, deltaX, deltaY);
 }

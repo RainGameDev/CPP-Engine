@@ -5,35 +5,36 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/glm.hpp>
 
-Camera::Camera(glm::vec3 position, glm::vec3 up, float yaw, float pitch)
-    : position(position), worldUp(up), yaw(yaw), pitch(pitch),
-      movementSpeed(2.5f), mouseSensitivity(0.1f), fov(90.0f) {
-  updateCameraVectors();
-}
+Camera::Camera(glm::vec3 up)
+    : worldUp(up), movementSpeed(2.5f), mouseSensitivity(0.1f), fov(90.0f) {}
 
-void Camera::processKeyboard(glm::vec3 inputDirection, float deltaTime) {
+void Camera::processKeyboard(TransformComponent &transform,
+                             glm::vec3 inputDirection, float deltaTime) {
   glm::vec3 forward = glm::normalize(glm::vec3(front.x, 0.0f, front.z));
   glm::vec3 movement = forward * inputDirection.z + right * inputDirection.x +
                        worldUp * inputDirection.y;
-  position += movement * movementSpeed * deltaTime;
+  transform.position += movement * movementSpeed * deltaTime;
 }
 
-void Camera::processMouseMovement(float xOffset, float yOffset,
-                                  bool constrainPitch) {
+void Camera::processMouseMovement(TransformComponent &transform, float xOffset,
+                                  float yOffset, bool constrainPitch) {
   xOffset *= mouseSensitivity;
   yOffset *= mouseSensitivity;
 
-  yaw += xOffset;
-  pitch += yOffset;
+  transform.rotation.y += xOffset;
+  transform.rotation.x += yOffset;
 
   if (constrainPitch) {
-    pitch = std::clamp(pitch, -89.0f, 89.0f);
+    transform.rotation.x = std::clamp(transform.rotation.x, -89.0f, 89.0f);
   }
 
-  updateCameraVectors();
+  updateCameraVectors(transform);
 }
 
-void Camera::updateCameraVectors() {
+void Camera::updateCameraVectors(const TransformComponent &transform) {
+  float yaw = transform.rotation.y;
+  float pitch = transform.rotation.x;
+
   glm::vec3 newFront;
   newFront.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
   newFront.y = sin(glm::radians(pitch));
@@ -49,6 +50,6 @@ glm::mat4 Camera::getProjectionMatrix(float aspectRatio, float nearPlane,
   return glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
 }
 
-glm::mat4 Camera::getViewMatrix() const {
-  return glm::lookAt(position, position + front, up);
+glm::mat4 Camera::getViewMatrix(const TransformComponent &transform) const {
+  return glm::lookAt(transform.position, transform.position + front, up);
 }
