@@ -8,15 +8,11 @@
 
 void VulkanRenderingContext::createUniformBuffers() {
   vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
-  // Create the buffer
-  vk::BufferCreateInfo bufferInfo{.size = bufferSize,
-                                  .usage =
-                                      vk::BufferUsageFlagBits::eUniformBuffer,
-                                  .sharingMode = vk::SharingMode::eExclusive};
   for (size_t i = 0; i < maxConcurrentFrames; i++) {
-    uniformBuffers[i].buffer = vk::raii::Buffer(device, bufferInfo);
+    uniformBuffers[i].buffer = vk::raii::Buffer(device, {.size = bufferSize,
+                                   .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+                                   .sharingMode = vk::SharingMode::eExclusive});
 
-    // Allocate and bind memory
     vk::MemoryRequirements memRequirements =
         uniformBuffers[i].buffer.getMemoryRequirements();
 
@@ -29,23 +25,78 @@ void VulkanRenderingContext::createUniformBuffers() {
 
     uniformBuffers[i].memory = vk::raii::DeviceMemory(device, allocInfo);
     uniformBuffers[i].buffer.bindMemory(*uniformBuffers[i].memory, 0);
-
-    // Persistently map the buffer memory
     uniformBuffers[i].mapped =
         uniformBuffers[i].memory.mapMemory(0, bufferSize);
+  }
+
+  vk::DeviceSize transformSize = sizeof(TransformUBO);
+  for (size_t i = 0; i < maxConcurrentFrames; i++) {
+    transformBuffers[i].buffer = vk::raii::Buffer(device, {.size = transformSize,
+                                   .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+                                   .sharingMode = vk::SharingMode::eExclusive});
+
+    vk::MemoryRequirements memRequirements =
+        transformBuffers[i].buffer.getMemoryRequirements();
+
+    vk::MemoryAllocateInfo allocInfo{
+        .allocationSize = memRequirements.size,
+        .memoryTypeIndex =
+            findMemoryType(memRequirements.memoryTypeBits,
+                           vk::MemoryPropertyFlagBits::eHostVisible |
+                               vk::MemoryPropertyFlagBits::eHostCoherent)};
+
+    transformBuffers[i].memory = vk::raii::DeviceMemory(device, allocInfo);
+    transformBuffers[i].buffer.bindMemory(*transformBuffers[i].memory, 0);
+    transformBuffers[i].mapped =
+        transformBuffers[i].memory.mapMemory(0, transformSize);
+    transformBufferSizes[i] = transformSize;
+  }
+
+  vk::DeviceSize lightSize = sizeof(LightsUBO);
+  for (size_t i = 0; i < maxConcurrentFrames; i++) {
+    lightBuffers[i].buffer = vk::raii::Buffer(device, {.size = lightSize,
+                                   .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+                                   .sharingMode = vk::SharingMode::eExclusive});
+
+    vk::MemoryRequirements memRequirements =
+        lightBuffers[i].buffer.getMemoryRequirements();
+
+    vk::MemoryAllocateInfo allocInfo{
+        .allocationSize = memRequirements.size,
+        .memoryTypeIndex =
+            findMemoryType(memRequirements.memoryTypeBits,
+                           vk::MemoryPropertyFlagBits::eHostVisible |
+                               vk::MemoryPropertyFlagBits::eHostCoherent)};
+
+    lightBuffers[i].memory = vk::raii::DeviceMemory(device, allocInfo);
+    lightBuffers[i].buffer.bindMemory(*lightBuffers[i].memory, 0);
+    lightBuffers[i].mapped =
+        lightBuffers[i].memory.mapMemory(0, lightSize);
   }
 }
 
 void VulkanRenderingContext::createDescriptorSetLayout() {
-  vk::DescriptorSetLayoutBinding uboLayoutBinding{
-      .binding = 0,
-      .descriptorType = vk::DescriptorType::eUniformBuffer,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eVertex,
-      .pImmutableSamplers = nullptr};
+  std::array<vk::DescriptorSetLayoutBinding, 3> set0Bindings = {{
+      {.binding = 0,
+       .descriptorType = vk::DescriptorType::eUniformBuffer,
+       .descriptorCount = 1,
+       .stageFlags = vk::ShaderStageFlagBits::eVertex,
+       .pImmutableSamplers = nullptr},
+      {.binding = 1,
+       .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
+       .descriptorCount = 1,
+       .stageFlags = vk::ShaderStageFlagBits::eVertex,
+       .pImmutableSamplers = nullptr},
+      {.binding = 2,
+       .descriptorType = vk::DescriptorType::eUniformBuffer,
+       .descriptorCount = 1,
+       .stageFlags = vk::ShaderStageFlagBits::eFragment,
+       .pImmutableSamplers = nullptr},
+  }};
 
   descriptorSetLayout = device.createDescriptorSetLayout(
-      {.bindingCount = 1, .pBindings = &uboLayoutBinding});
+      {.bindingCount = static_cast<uint32_t>(set0Bindings.size()),
+       .pBindings = set0Bindings.data()});
 
   std::array<vk::DescriptorSetLayoutBinding, 4> materialBindings = {{
       {.binding = 0,
@@ -83,19 +134,43 @@ void VulkanRenderingContext::createDescriptorSets() {
   descriptorSets = device.allocateDescriptorSets(allocInfo);
 
   for (size_t i = 0; i < maxConcurrentFrames; i++) {
-    vk::DescriptorBufferInfo bufferInfo{.buffer = *uniformBuffers[i].buffer,
-                                        .offset = 0,
-                                        .range = sizeof(UniformBufferObject)};
+    vk::DescriptorBufferInfo cameraBufferInfo{
+        .buffer = *uniformBuffers[i].buffer,
+        .offset = 0,
+        .range = sizeof(UniformBufferObject)};
 
-    vk::WriteDescriptorSet descriptorWrite{
-        .dstSet = descriptorSets[i],
-        .dstBinding = 0,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType = vk::DescriptorType::eUniformBuffer,
-        .pBufferInfo = &bufferInfo};
+    vk::DescriptorBufferInfo transformBufferInfo{
+        .buffer = *transformBuffers[i].buffer,
+        .offset = 0,
+        .range = sizeof(TransformUBO)};
 
-    device.updateDescriptorSets(descriptorWrite, nullptr);
+    vk::DescriptorBufferInfo lightBufferInfo{
+        .buffer = *lightBuffers[i].buffer,
+        .offset = 0,
+        .range = sizeof(LightsUBO)};
+
+    std::array<vk::WriteDescriptorSet, 3> writes = {{
+        {.dstSet = descriptorSets[i],
+         .dstBinding = 0,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eUniformBuffer,
+         .pBufferInfo = &cameraBufferInfo},
+        {.dstSet = descriptorSets[i],
+         .dstBinding = 1,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
+         .pBufferInfo = &transformBufferInfo},
+        {.dstSet = descriptorSets[i],
+         .dstBinding = 2,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eUniformBuffer,
+         .pBufferInfo = &lightBufferInfo},
+    }};
+
+    device.updateDescriptorSets(writes, nullptr);
   }
 }
 

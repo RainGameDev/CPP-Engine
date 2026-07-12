@@ -12,6 +12,7 @@ struct Mesh {
   vk::raii::DeviceMemory vertexMemory{nullptr};
   vk::raii::Buffer indexBuffer{nullptr};
   vk::raii::DeviceMemory indexMemory{nullptr};
+  uint32_t vertexCount = 0;
   uint32_t indexCount = 0;
   MaterialAsset *material = nullptr;
 };

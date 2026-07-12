@@ -1,10 +1,13 @@
 #include "assets/material_loader.h"
+#include "ecs/components.h"
+#include "ecs/query.h"
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 #include "rendering/vulkan_render_context.h"
 
 #include <cstdint>
 #include <iostream>
+#include <vector>
 
 void VulkanRenderingContext::createCommandPool() {
   vk::CommandPoolCreateInfo poolInfo{
@@ -58,49 +61,79 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
 
   commandBuffer.beginRendering(renderingInfo);
 
-  // render all meshes
-  for (auto &mesh : meshes) {
+  updateLightBuffer(currentFrame);
 
-    ShaderKey key;
-    if (mesh.material != nullptr) {
-      key = {mesh.material->vertexShader, mesh.material->fragmentShader};
-    } else {
-      key = {"sdr_default_model.vert", "sdr_default_model.frag"};
+  struct DrawEntry {
+    MeshComponent *mc;
+    TransformComponent *tc;
+    uint32_t index;
+  };
+  std::vector<DrawEntry> drawList;
+
+  Query<MeshComponent, TransformComponent> meshQuery(*world);
+  meshQuery.for_each([&](EntityId id, MeshComponent &mc, TransformComponent &tc) {
+    drawList.push_back({&mc, &tc, static_cast<uint32_t>(drawList.size())});
+  });
+
+  if (!drawList.empty()) {
+    ensureTransformBuffer(currentFrame, static_cast<uint32_t>(drawList.size()));
+
+    for (auto &entry : drawList) {
+      TransformUBO tu{.pos = glm::vec4(entry.tc->position, 0.0f),
+                       .rotation = glm::vec4(entry.tc->rotation, 0.0f),
+                       .scale = glm::vec4(entry.tc->scale, 0.0f)};
+      vk::DeviceSize offset = sizeof(TransformUBO) * entry.index;
+      memcpy(static_cast<uint8_t *>(transformBuffers[currentFrame].mapped) + offset,
+             &tu, sizeof(tu));
     }
 
-    auto pipeline = getOrCreatePipeline(key);
+    for (auto &entry : drawList) {
+      auto &mesh = entry.mc->mesh;
 
-    commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+      ShaderKey key;
+      if (mesh.material != nullptr) {
+        key = {mesh.material->vertexShader, mesh.material->fragmentShader};
+      } else {
+        key = {"sdr_default_model.vert", "sdr_default_model.frag"};
+      }
 
-    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                     *pipelineLayout, 0,
-                                     {*descriptorSets[currentFrame]}, nullptr);
+      auto pipeline = getOrCreatePipeline(key);
 
-    commandBuffer.setViewport(
-        0,
-        vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width),
-                     static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
-    commandBuffer.setScissor(0,
-                             vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+      commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
 
-    auto &mat = mesh.material;
+      uint32_t dynamicOffset =
+          static_cast<uint32_t>(sizeof(TransformUBO) * entry.index);
+      commandBuffer.bindDescriptorSets(
+          vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
+          {*descriptorSets[currentFrame]}, {dynamicOffset});
 
-    commandBuffer.bindDescriptorSets(
-        vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
-        {*descriptorSets[currentFrame], *mat->descriptorSet}, nullptr);
+      commandBuffer.setViewport(
+          0,
+          vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width),
+                       static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+      commandBuffer.setScissor(
+          0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 
-    MaterialPushConstants pc{.baseColorFactor = mat->baseColorFactor,
-                             .metallicFactor = mat->metallicFactor,
-                             .roughnessFactor = mat->roughnessFactor,
-                             .parallaxStrength = mat->parallaxStrength};
-    commandBuffer.pushConstants(*pipelineLayout,
-                                vk::ShaderStageFlagBits::eVertex |
-                                    vk::ShaderStageFlagBits::eFragment,
-                                0, sizeof(pc), &pc);
+      auto &mat = mesh.material;
 
-    commandBuffer.bindVertexBuffers(0, {*mesh.vertexBuffer}, {0});
-    commandBuffer.bindIndexBuffer(*mesh.indexBuffer, 0, vk::IndexType::eUint32);
-    commandBuffer.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+      commandBuffer.bindDescriptorSets(
+          vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
+          {*descriptorSets[currentFrame], *mat->descriptorSet}, {dynamicOffset});
+
+      MaterialPushConstants pc{.baseColorFactor = mat->baseColorFactor,
+                               .metallicFactor = mat->metallicFactor,
+                               .roughnessFactor = mat->roughnessFactor,
+                               .parallaxStrength = mat->parallaxStrength};
+      commandBuffer.pushConstants(*pipelineLayout,
+                                  vk::ShaderStageFlagBits::eVertex |
+                                      vk::ShaderStageFlagBits::eFragment,
+                                  0, sizeof(pc), &pc);
+
+      commandBuffer.bindVertexBuffers(0, {*mesh.vertexBuffer}, {0});
+      commandBuffer.bindIndexBuffer(*mesh.indexBuffer, 0,
+                                    vk::IndexType::eUint32);
+      commandBuffer.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+    }
   }
   // render imgui
   ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer,

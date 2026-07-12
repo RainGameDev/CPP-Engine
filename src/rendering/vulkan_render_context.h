@@ -16,6 +16,8 @@
 #include "ubo.h"
 #include "vertex.h"
 
+#include "ecs/world.h"
+
 #ifdef _WIN32
 #define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -38,12 +40,11 @@ class VulkanRenderingContext {
 public:
   bool framebufferResized = false;
 
-  void init(GLFWwindow *window);
+  void init(GLFWwindow *window, World &ecsWorld);
   void cleanup();
   void drawFrame();
   void updateUniformBuffer(uint32_t frame, const UniformBufferObject &ubo);
   void updateUniformBuffer(uint32_t frame);
-  void addMesh(Mesh mesh);
 
   UniformBufferObject lastUbo{};
 
@@ -86,6 +87,9 @@ public:
       vk::KHRSwapchainExtensionName};
 
   std::array<UboBuffer, maxConcurrentFrames> uniformBuffers;
+  std::array<UboBuffer, maxConcurrentFrames> transformBuffers;
+  std::array<vk::DeviceSize, maxConcurrentFrames> transformBufferSizes{};
+  std::array<UboBuffer, maxConcurrentFrames> lightBuffers;
 
   vk::raii::DescriptorPool descriptorPool = nullptr;
   vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
@@ -96,7 +100,7 @@ public:
 
   uint32_t currentFrame = 0;
 
-  std::vector<Mesh> meshes;
+  World *world = nullptr;
 
   AssetManager assetManager;
 
@@ -145,6 +149,8 @@ public:
 
   void createCubeMesh();
   Mesh loadObjMesh(const std::string &objPath, MaterialAsset *material);
+  void ensureTransformBuffer(uint32_t frame, uint32_t meshCount);
+  void updateLightBuffer(uint32_t frame);
   void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                     vk::MemoryPropertyFlags properties,
                     vk::raii::Buffer &buffer,

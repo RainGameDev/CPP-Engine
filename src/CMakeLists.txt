@@ -6,13 +6,13 @@ file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
 list(REMOVE_ITEM ENGINE_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp)
 add_library(engine_lib STATIC ${ENGINE_SOURCES})
 target_include_directories(engine_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
-target_include_directories(engine_lib PRIVATE ${CMAKE_SOURCE_DIR}/src ${stb_SOURCE_DIR})
+target_include_directories(engine_lib PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR} ${stb_SOURCE_DIR})
 target_link_libraries(engine_lib PUBLIC glm::glm imgui nlohmann_json::nlohmann_json tinyobjloader)
 target_compile_definitions(engine_lib PUBLIC VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1)
 
 add_executable(engine main.cpp)
 target_link_libraries(engine PRIVATE engine_lib glfw)
-target_include_directories(engine PRIVATE ${CMAKE_SOURCE_DIR}/src ${stb_SOURCE_DIR})
+target_include_directories(engine PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR} ${stb_SOURCE_DIR})
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLFW glfw3)
 

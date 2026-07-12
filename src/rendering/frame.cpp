@@ -18,7 +18,6 @@ void VulkanRenderingContext::drawFrame() {
   if (fenceResult != vk::Result::eSuccess) {
     throw std::runtime_error("failed to wait for fence!");
   }
-  device.resetFences(*drawFence);
 
   auto [result, imageIndex] = swapChain.acquireNextImage(
       UINT64_MAX, *presentCompleteSemaphore, nullptr);
@@ -32,9 +31,10 @@ void VulkanRenderingContext::drawFrame() {
     return;
   }
 
+  device.resetFences(*drawFence);
+
   recordCommandBuffer(imageIndex, currentFrame % maxConcurrentFrames);
 
-  queue.waitIdle();
   vk::PipelineStageFlags waitDestinationStageMask(
       vk::PipelineStageFlagBits::eColorAttachmentOutput);
   const vk::SubmitInfo submitInfo{
@@ -82,6 +82,4 @@ void VulkanRenderingContext::drawFrame() {
   default:
     break;
   }
-
-  currentFrame = (currentFrame + 1) % maxConcurrentFrames;
 }

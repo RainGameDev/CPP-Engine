@@ -15,4 +15,4 @@
   - [x] Index buffers
   - [x] ImGui
   - [x] Textures
-  - [ ] Materials
+  - [x] Materials

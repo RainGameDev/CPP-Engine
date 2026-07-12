@@ -6,10 +6,28 @@
 #include <vulkan/vulkan_raii.hpp>
 
 struct UniformBufferObject {
-  glm::mat4 model;
   glm::mat4 view;
   glm::mat4 proj;
   glm::vec4 pos;
+};
+
+struct TransformUBO {
+  glm::vec4 pos;
+  glm::vec4 rotation;
+  glm::vec4 scale;
+};
+
+struct LightUBO {
+  glm::vec4 positionOrDirection;
+  glm::vec4 colorAndIntensity;
+  glm::vec4 params;
+};
+
+constexpr uint32_t MAX_LIGHTS = 16;
+
+struct LightsUBO {
+  LightUBO lights[MAX_LIGHTS];
+  uint32_t count;
 };
 
 constexpr uint32_t maxConcurrentFrames = 2;

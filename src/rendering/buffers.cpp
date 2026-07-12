@@ -1,16 +1,16 @@
-#include "rendering/vulkan_render_context.h"
 #include "assets/material_loader.h"
 #include "assets/obj_loader.h"
+#include "ecs/components.h"
+#include "rendering/vulkan_render_context.h"
 
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
 
-void VulkanRenderingContext::createBuffer(vk::DeviceSize size,
-                                     vk::BufferUsageFlags usage,
-                                     vk::MemoryPropertyFlags properties,
-                                     vk::raii::Buffer &buffer,
-                                     vk::raii::DeviceMemory &bufferMemory) {
+void VulkanRenderingContext::createBuffer(
+    vk::DeviceSize size, vk::BufferUsageFlags usage,
+    vk::MemoryPropertyFlags properties, vk::raii::Buffer &buffer,
+    vk::raii::DeviceMemory &bufferMemory) {
   vk::BufferCreateInfo bufferInfo{
       .size = size, .usage = usage, .sharingMode = vk::SharingMode::eExclusive};
   buffer = vk::raii::Buffer(device, bufferInfo);
@@ -27,8 +27,8 @@ void VulkanRenderingContext::createBuffer(vk::DeviceSize size,
 }
 
 void VulkanRenderingContext::copyBuffer(vk::raii::Buffer &srcBuffer,
-                                   vk::raii::Buffer &dstBuffer,
-                                   vk::DeviceSize size) {
+                                        vk::raii::Buffer &dstBuffer,
+                                        vk::DeviceSize size) {
   vk::CommandBufferAllocateInfo allocInfo{.commandPool = *commandPool,
                                           .level =
                                               vk::CommandBufferLevel::ePrimary,
@@ -71,28 +71,58 @@ void VulkanRenderingContext::createCubeMesh() {
 
   FaceDef faces[6] = {
       // Front (+Z)
-      {{0, 0, 1}, {1, 0, 0}, {0, 1, 0},
-       {{-0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}},
+      {{0, 0, 1},
+       {1, 0, 0},
+       {0, 1, 0},
+       {{-0.5f, -0.5f, 0.5f},
+        {0.5f, -0.5f, 0.5f},
+        {0.5f, 0.5f, 0.5f},
+        {-0.5f, 0.5f, 0.5f}},
        {{0, 0}, {1, 0}, {1, 1}, {0, 1}}},
       // Back (-Z)
-      {{0, 0, -1}, {-1, 0, 0}, {0, 1, 0},
-       {{0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}},
+      {{0, 0, -1},
+       {-1, 0, 0},
+       {0, 1, 0},
+       {{0.5f, -0.5f, -0.5f},
+        {-0.5f, -0.5f, -0.5f},
+        {-0.5f, 0.5f, -0.5f},
+        {0.5f, 0.5f, -0.5f}},
        {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
       // Left (-X)
-      {{-1, 0, 0}, {0, 0, 1}, {0, 1, 0},
-       {{-0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, -0.5f}},
+      {{-1, 0, 0},
+       {0, 0, 1},
+       {0, 1, 0},
+       {{-0.5f, -0.5f, -0.5f},
+        {-0.5f, -0.5f, 0.5f},
+        {-0.5f, 0.5f, 0.5f},
+        {-0.5f, 0.5f, -0.5f}},
        {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
       // Right (+X)
-      {{1, 0, 0}, {0, 0, -1}, {0, 1, 0},
-       {{0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}},
+      {{1, 0, 0},
+       {0, 0, -1},
+       {0, 1, 0},
+       {{0.5f, -0.5f, 0.5f},
+        {0.5f, -0.5f, -0.5f},
+        {0.5f, 0.5f, -0.5f},
+        {0.5f, 0.5f, 0.5f}},
        {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
       // Top (+Y)
-      {{0, 1, 0}, {1, 0, 0}, {0, 0, 1},
-       {{-0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}},
+      {{0, 1, 0},
+       {1, 0, 0},
+       {0, 0, 1},
+       {{-0.5f, 0.5f, 0.5f},
+        {0.5f, 0.5f, 0.5f},
+        {0.5f, 0.5f, -0.5f},
+        {-0.5f, 0.5f, -0.5f}},
        {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
       // Bottom (-Y)
-      {{0, -1, 0}, {-1, 0, 0}, {0, 0, 1},
-       {{0.5f, -0.5f, 0.5f}, {-0.5f, -0.5f, 0.5f}, {-0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, -0.5f}},
+      {{0, -1, 0},
+       {-1, 0, 0},
+       {0, 0, 1},
+       {{0.5f, -0.5f, 0.5f},
+        {-0.5f, -0.5f, 0.5f},
+        {-0.5f, -0.5f, -0.5f},
+        {0.5f, -0.5f, -0.5f}},
        {{0, 1}, {1, 1}, {1, 0}, {0, 0}}},
   };
 
@@ -107,14 +137,12 @@ void VulkanRenderingContext::createCubeMesh() {
 
         // Bilinear interpolation of position
         glm::vec3 p = (1 - u) * (1 - v) * face.corners[0] +
-                      u * (1 - v) * face.corners[1] +
-                      u * v * face.corners[2] +
+                      u * (1 - v) * face.corners[1] + u * v * face.corners[2] +
                       (1 - u) * v * face.corners[3];
 
         // Bilinear interpolation of UV
         glm::vec2 uv = (1 - u) * (1 - v) * face.uvs[0] +
-                       u * (1 - v) * face.uvs[1] +
-                       u * v * face.uvs[2] +
+                       u * (1 - v) * face.uvs[1] + u * v * face.uvs[2] +
                        (1 - u) * v * face.uvs[3];
 
         vertices.push_back({p, {1, 1, 1}, uv, face.tangent, face.normal});
@@ -180,9 +208,13 @@ void VulkanRenderingContext::createCubeMesh() {
 
   copyBuffer(indexStagingBuffer, cube.indexBuffer, indexBufferSize);
 
+  cube.vertexCount = static_cast<uint32_t>(vertices.size());
   cube.indexCount = static_cast<uint32_t>(indices.size());
   cube.material = &materials->getAsset("brick.mat");
-  meshes.push_back(std::move(cube));
+
+  auto entity = world->create_entity();
+  world->add_component(entity, MeshComponent{std::move(cube)});
+  world->add_component(entity, TransformComponent{});
 }
 
 Mesh VulkanRenderingContext::loadObjMesh(const std::string &objPath,
@@ -191,6 +223,7 @@ Mesh VulkanRenderingContext::loadObjMesh(const std::string &objPath,
 
   Mesh mesh{};
   mesh.indexCount = static_cast<uint32_t>(data.indices.size());
+  mesh.vertexCount = static_cast<uint32_t>(data.vertices.size());
   mesh.material = material;
 
   // Vertex buffer

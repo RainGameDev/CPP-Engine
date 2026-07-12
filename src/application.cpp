@@ -1,11 +1,15 @@
 #include "application.h"
 #include "assets/material_loader.h"
+#include "ecs/components.h"
+#include "ecs/light.h"
+#include "ecs/query.h"
 #include "glm/ext/vector_float3.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 #include <GLFW/glfw3.h>
+#include <cstdint>
 
 void Application::run() {
   glfwInit();
@@ -27,7 +31,18 @@ void Application::run() {
   glfwSetWindowUserPointer(window, this);
   glfwSetCursorPosCallback(window, mouse_callback);
 
-  renderer.init(window);
+  renderer.init(window, world);
+
+  cameraEntity = world.create_entity();
+  world.add_component(cameraEntity, Camera{});
+
+  auto lightEntity = world.create_entity();
+  world.add_component(lightEntity,
+                      LightComponent{.lightType = Directional{},
+                                     .intensity = 1.0f,
+                                     .color = glm::vec3(1.0, 0.0, 0.0),
+                                     .isEmitting = true});
+  world.add_component(lightEntity, TransformComponent{{5.0f, 1.0f, 5.0f}});
 
   mainLoop();
   renderer.cleanup();
@@ -45,13 +60,13 @@ void Application::mainLoop() {
     glfwPollEvents();
     processInput(deltaTime);
 
+    auto *cam = world.get_storage<Camera>().get(cameraEntity);
+
     UniformBufferObject ubo{};
-    ubo.model = glm::mat4(1.0f);
-    ubo.view = camera.getViewMatrix();
-    ubo.pos = glm::vec4(camera.position, 0.0);
-    ubo.proj =
-        camera.getProjectionMatrix(renderer.swapChainExtent.width /
-                                   (float)renderer.swapChainExtent.height);
+    ubo.view = cam->getViewMatrix();
+    ubo.pos = glm::vec4(cam->getPosition(), 0.0);
+    ubo.proj = cam->getProjectionMatrix(renderer.swapChainExtent.width /
+                                        (float)renderer.swapChainExtent.height);
     ubo.proj[1][1] *= -1;
 
     renderer.updateUniformBuffer(renderer.currentFrame, ubo);
@@ -69,9 +84,20 @@ void Application::mainLoop() {
                      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBackground |
                      ImGuiWindowFlags_AlwaysAutoResize);
     ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-    glm::vec3 position = camera.getPosition();
+    glm::vec3 position = cam->getPosition();
     ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y,
                 position.z);
+
+    uint32_t vertexCount = 0;
+
+    Query<MeshComponent> meshQuery(world);
+    meshQuery.for_each([&](EntityId id, MeshComponent &mc) {
+      vertexCount += mc.mesh.vertexCount;
+    });
+
+    ImGui::Text("Vertex Count: %i", vertexCount);
+    ImGui::Text("Entity Count: %i", world.entityCount());
+
     ImGui::End();
 
     renderer.framebufferResized = framebufferResized;
@@ -103,7 +129,8 @@ void Application::processInput(float deltaTime) {
   if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
     inputDir.x += 1.0;
 
-  camera.processKeyboard(inputDir, deltaTime);
+  auto *cam = world.get_storage<Camera>().get(cameraEntity);
+  cam->processKeyboard(inputDir, deltaTime);
 }
 
 double Application::lastX = 0.0;
@@ -124,5 +151,6 @@ void Application::mouse_callback(GLFWwindow *window, double xpos, double ypos) {
   lastX = xpos;
   lastY = ypos;
 
-  app->camera.processMouseMovement(deltaX, deltaY);
+  auto *cam = app->world.get_storage<Camera>().get(app->cameraEntity);
+  cam->processMouseMovement(deltaX, deltaY);
 }

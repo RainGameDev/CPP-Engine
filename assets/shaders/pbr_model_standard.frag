@@ -24,11 +24,28 @@ layout(push_constant) uniform MaterialParams {
 
 
 layout(set = 0, binding = 0) uniform UniformBufferObject {
-    mat4 model;
     mat4 view;
     mat4 proj;
-    vec4 pos;
+    vec3 pos;
 } ubo;
+
+layout(set = 0, binding = 1) uniform TransformBufferObject {
+    vec4 pos;
+    vec4 rotation;
+    vec4 scale;
+} transformUBO;
+
+struct LightData {
+    vec4 positionOrDirection;
+    vec4 colorAndIntensity;
+    vec4 params;
+};
+
+layout(set = 0, binding = 2) uniform LightsBuffer {
+    LightData lights[16];
+    uint count;
+} lightsUBO;
+
 
 
 const float PI = 3.1415;
@@ -108,34 +125,45 @@ void main() {
   vec3 texN = textureGrad(normalMap, uv, dx, dy).rgb * 2.0 - 1.0;
   vec3 N = normalize(TBN * texN);
 
-  // Lighting setup
-  vec3 lightColor = vec3(0.5); // TODO: pass from UBO
-  vec3 lightDir   = normalize(vec3(1.0, 1.0, 1.0)); // TODO: pass from UBO
-  vec3 camPos     = ubo.pos.xyz;
-  vec3 V          = normalize(camPos - fragWorldPos);
-  vec3 L          = lightDir;
-  vec3 H          = normalize(V + L);
-
-  // PBR calculations
+  // Lighting
+  vec3 camPos = ubo.pos.xyz;
+  vec3 V = normalize(camPos - fragWorldPos);
   vec3 F0 = mix(vec3(0.04), albedo.rgb, metallic);
+  vec3 Lo = vec3(0.0);
 
-  // Cook Torrance BRDF
-  float NDF = distributionGGX(N, H, roughness);
-  float G   = geometrySmith(N, V, L, roughness);
-  vec3  F   = fresnelSchlick(max(dot(H, V), 0.0), F0);
+  for (uint i = 0u; i < lightsUBO.count; i++) {
+    LightData light = lightsUBO.lights[i];
+    vec3 lightColor = light.colorAndIntensity.rgb;
+    float intensity = light.colorAndIntensity.a;
+    vec3 L;
 
-  vec3 numerator   = NDF * G * F;
-  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-  vec3 specular     = numerator / denominator;
+    if (light.positionOrDirection.w < 0.5) {
+      L = normalize(light.positionOrDirection.xyz);
+    } else {
+      vec3 toLight = light.positionOrDirection.xyz - fragWorldPos;
+      L = normalize(toLight);
+      float dist = length(toLight);
+      float radius = light.params.x;
+      intensity *= 1.0 / (1.0 + dist * dist / (radius * radius));
+    }
 
-  vec3 kS = F;
-  vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+    vec3 H = normalize(V + L);
 
-  float NdotL = max(dot(N, L), 0.0);
-  vec3 Lo = (kD * albedo.rgb / PI + specular) * lightColor * NdotL;
+    float NDF = distributionGGX(N, H, roughness);
+    float G   = geometrySmith(N, V, L, roughness);
+    vec3  F   = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
-  // Ambient + shadow (just AO atm) 
+    vec3 numerator   = NDF * G * F;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+    vec3 specular     = numerator / denominator;
+
+    vec3 kS = F;
+    vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+
+    float NdotL = max(dot(N, L), 0.0);
+    Lo += (kD * albedo.rgb / PI + specular) * lightColor * intensity * NdotL;
+  }
+
   vec3 ambient = vec3(0.03) * albedo.rgb * ao;
-
   outColor = vec4(ambient + Lo, albedo.a);
 }

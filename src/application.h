@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ecs/entity.h"
+#include "ecs/world.h"
 #include "rendering/camera.h"
 #include "rendering/vulkan_render_context.h"
 
@@ -14,7 +16,8 @@ public:
 private:
   GLFWwindow *window = nullptr;
   VulkanRenderingContext renderer;
-  Camera camera;
+  World world;
+  EntityId cameraEntity;
 
   static double lastX, lastY;
   static bool firstMouse;
