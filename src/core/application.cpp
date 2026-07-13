@@ -1,5 +1,7 @@
 #include "application.h"
+#include "assets/asset_manager.h"
 #include "assets/material_loader.h"
+#include "assets/model_loader.h"
 #include "ecs/components.h"
 #include "ecs/light.h"
 #include "ecs/query.h"
@@ -10,6 +12,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
+#include "imgui_internal.h"
 #include <GLFW/glfw3.h>
 #include <cstdint>
 #include <print>
@@ -34,15 +37,40 @@ void Application::run() {
   glfwSetWindowUserPointer(window, this);
   glfwSetCursorPosCallback(window, mouse_callback);
 
+  world.add_resource<AssetManager>();
+  AssetManager &assetManager = *world.get_resource<AssetManager>();
+
   renderer.init(window, world);
+  assetManager.addLoader(std::make_unique<ShaderLoader>(renderer.device));
+  assetManager.loadDirectory("assets/shaders");
+  assetManager.addLoader(std::make_unique<TextureLoader>(
+      renderer.device, renderer.physicalDevice, renderer.commandPool,
+      renderer.queue, renderer.queueIndex));
+  assetManager.loadDirectory("assets/textures");
+  assetManager.addLoader(std::make_unique<MaterialLoader>(
+      renderer.device, renderer.physicalDevice, renderer.materialSetLayout,
+      renderer.descriptorPool, renderer.commandPool, renderer.queue,
+      assetManager));
+  assetManager.loadDirectory("assets/materials");
+  assetManager.addLoader(std::make_unique<ModelLoader>(
+      renderer.device, renderer.physicalDevice, renderer.commandPool,
+      renderer.queue, assetManager));
+  assetManager.loadDirectory("assets/models");
+
+  auto *models = assetManager.getLoader<MeshAsset>();
+  auto meshEntity = world.create_entity();
+  world.add_component(
+      meshEntity,
+      MeshComponent{.mesh = std::make_shared<Mesh>(std::move(models->getAsset("mesh").mesh))});
+  world.add_component(meshEntity, TransformComponent{});
 
   cameraEntity = world.create_entity();
   world.get_storage<NameComponent>().get(cameraEntity)->setName("Camera");
   world.add_component(cameraEntity, Camera{});
   world.add_component(cameraEntity, TransformComponent{
-                                       .position = {0.0f, 0.0f, -3.0f},
-                                       .rotation = {-90.0f, 0.0f, 0.0f},
-                                   });
+                                        .position = {0.0f, 0.0f, -3.0f},
+                                        .rotation = {-90.0f, 0.0f, 0.0f},
+                                    });
 
   lightEntity = world.create_entity();
   world.get_storage<NameComponent>().get(lightEntity)->setName("Light");
@@ -51,13 +79,16 @@ void Application::run() {
                                      .intensity = 1.0f,
                                      .color = glm::vec3(1.0, 0.0, 0.0),
                                      .isEmitting = true});
-  world.add_component(lightEntity, TransformComponent{.position = {5.0f, 1.0f, 5.0f}});
+  world.add_component(lightEntity,
+                      TransformComponent{.position = {5.0f, 1.0f, 5.0f}});
 
   debugIndicatorEntity = world.create_entity();
-  world.get_storage<NameComponent>().get(debugIndicatorEntity)->setName("Debug Indicator");
+  world.get_storage<NameComponent>()
+      .get(debugIndicatorEntity)
+      ->setName("Debug Indicator");
   auto indicatorMesh = renderer.createIndicatorMesh();
   world.add_component(debugIndicatorEntity,
-                      MeshComponent{.mesh = std::move(indicatorMesh)});
+                      MeshComponent{.mesh = indicatorMesh});
   world.add_component(debugIndicatorEntity, TransformComponent{});
 
   mainLoop();
@@ -115,33 +146,55 @@ void Application::mainLoop() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
+    ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(),
+                                 ImGuiDockNodeFlags_PassthruCentralNode);
+
+    static bool dockspaceInitialized = false;
+    if (!dockspaceInitialized) {
+      dockspaceInitialized = true;
+
+      ImGuiID dockspaceId = ImGui::GetID("MyDockSpace");
+      ImGui::DockBuilderRemoveNode(dockspaceId);
+      ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+      ImGui::DockBuilderSetNodeSize(dockspaceId,
+                                    ImGui::GetMainViewport()->Size);
+
+      ImGuiID right;
+      ImGuiID bottom;
+      ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, &right,
+                                  &bottom);
+      ImGui::DockBuilderSplitNode(bottom, ImGuiDir_Down, 0.25f, &bottom,
+                                  nullptr);
+
+      ImGui::DockBuilderDockWindow("Assets", bottom);
+      ImGui::DockBuilderDockWindow("Hierarchy", right);
+      ImGui::DockBuilderDockWindow("Inspector", right);
+
+      ImGui::DockBuilderFinish(dockspaceId);
+    }
+
     // run all update functions
     tick(deltaTime);
 
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-    ImGui::SetNextWindowBgAlpha(0.0f);
-    ImGui::Begin("Debug", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                     ImGuiWindowFlags_NoInputs |
-                     ImGuiWindowFlags_NoFocusOnAppearing |
-                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBackground |
-                     ImGuiWindowFlags_AlwaysAutoResize);
-    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-    glm::vec3 position = cam->getPosition(*camTc);
-    ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y,
-                position.z);
+    {
+      ImGui::Begin("Debug", nullptr);
+      ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+      glm::vec3 position = cam->getPosition(*camTc);
+      ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y,
+                  position.z);
 
-    uint32_t vertexCount = 0;
+      uint32_t vertexCount = 0;
 
-    Query<MeshComponent> meshQuery(world);
-    meshQuery.for_each([&](EntityId id, MeshComponent &mc) {
-      vertexCount += mc.mesh.vertexCount;
-    });
+      Query<MeshComponent> meshQuery(world);
+      meshQuery.for_each([&](EntityId id, MeshComponent &mc) {
+        vertexCount += mc.mesh ? mc.mesh->vertexCount : 0;
+      });
 
-    ImGui::Text("Vertex Count: %i", vertexCount);
-    ImGui::Text("Entity Count: %i", world.entityCount());
+      ImGui::Text("Vertex Count: %i", vertexCount);
+      ImGui::Text("Entity Count: %i", world.entityCount());
 
-    ImGui::End();
+      ImGui::End();
+    }
 
     renderer.framebufferResized = framebufferResized;
     framebufferResized = false;

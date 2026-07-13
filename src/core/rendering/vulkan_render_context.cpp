@@ -1,4 +1,5 @@
 #include "rendering/vulkan_render_context.h"
+#include "assets/asset_manager.h"
 #include "assets/material_loader.h"
 #include "assets/obj_loader.h"
 #include "assets/shader_loader.h"
@@ -20,39 +21,15 @@ void VulkanRenderingContext::init(GLFWwindow *window, World &ecsWorld) {
   createSurface();
   pickPhysicalDevice();
   createLogicalDevice();
-  assetManager.addLoader(std::make_unique<ShaderLoader>(device));
-  assetManager.loadDirectory("assets/shaders");
   createSwapChain();
   createImageViews();
   createDepthResources();
   createCommandPool();
   createDescriptorSetLayout();
-  assetManager.addLoader(std::make_unique<TextureLoader>(
-      device, physicalDevice, commandPool, queue, queueIndex));
-  assetManager.loadDirectory("assets/textures");
-
   createDescriptorPool();
-  assetManager.addLoader(std::make_unique<MaterialLoader>(
-      device, physicalDevice, materialSetLayout, descriptorPool, commandPool,
-      queue, assetManager));
-  assetManager.loadDirectory("assets/materials");
-
   createUniformBuffers();
   createDescriptorSets();
   createGraphicsPipelineLayout();
-
-  auto *materials = assetManager.getLoader<MaterialAsset>();
-  auto mesh =
-      loadObjMesh("assets/models/mesh.obj", &materials->getAsset("brick.mat"));
-  auto entity = world->create_entity();
-  world->add_component(entity, MeshComponent{.mesh = std::move(mesh)});
-  world->add_component(entity, TransformComponent{});
-
-  auto mesh2 =
-      loadObjMesh("assets/models/mesh.obj", &materials->getAsset("brick.mat"));
-  auto entity2 = world->create_entity();
-  world->add_component(entity2, MeshComponent{.mesh = std::move(mesh2)});
-  world->add_component(entity2, TransformComponent{.position = {20.0f, 0.0f, 0.0f}});
 
   createCommandBuffer();
   createSyncObjects();
@@ -122,25 +99,25 @@ void VulkanRenderingContext::updateLightBuffer(uint32_t frame) {
   lightsubo.count = 0;
 
   Query<LightComponent, TransformComponent> lightQuery(*world);
-  lightQuery.for_each([&](EntityId id, LightComponent &lc, TransformComponent &tc) {
-    if (lightsubo.count >= MAX_LIGHTS)
-      return;
-    auto &l = lightsubo.lights[lightsubo.count];
-    if (std::holds_alternative<Directional>(lc.lightType)) {
-      l.positionOrDirection = glm::vec4(
-          glm::normalize(tc.position), 0.0f);
-    } else if (std::holds_alternative<Point>(lc.lightType)) {
-      l.positionOrDirection = glm::vec4(tc.position, 1.0f);
-      l.params.x = std::get<Point>(lc.lightType).radius;
-    } else if (std::holds_alternative<Spot>(lc.lightType)) {
-      l.positionOrDirection = glm::vec4(tc.position, 2.0f);
-      auto &spot = std::get<Spot>(lc.lightType);
-      l.params.x = spot.angle;
-      l.params.y = spot.length;
-    }
-    l.colorAndIntensity = glm::vec4(lc.color, lc.intensity);
-    lightsubo.count++;
-  });
+  lightQuery.for_each(
+      [&](EntityId id, LightComponent &lc, TransformComponent &tc) {
+        if (lightsubo.count >= MAX_LIGHTS)
+          return;
+        auto &l = lightsubo.lights[lightsubo.count];
+        if (std::holds_alternative<Directional>(lc.lightType)) {
+          l.positionOrDirection = glm::vec4(glm::normalize(tc.position), 0.0f);
+        } else if (std::holds_alternative<Point>(lc.lightType)) {
+          l.positionOrDirection = glm::vec4(tc.position, 1.0f);
+          l.params.x = std::get<Point>(lc.lightType).radius;
+        } else if (std::holds_alternative<Spot>(lc.lightType)) {
+          l.positionOrDirection = glm::vec4(tc.position, 2.0f);
+          auto &spot = std::get<Spot>(lc.lightType);
+          l.params.x = spot.angle;
+          l.params.y = spot.length;
+        }
+        l.colorAndIntensity = glm::vec4(lc.color, lc.intensity);
+        lightsubo.count++;
+      });
 
   memcpy(lightBuffers[frame].mapped, &lightsubo, sizeof(lightsubo));
 }

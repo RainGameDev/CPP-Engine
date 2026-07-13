@@ -5,6 +5,7 @@
 #include "rendering/mesh.h"
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/glm.hpp>
+#include <memory>
 #include <string>
 
 struct NameComponent : Component<NameComponent> {
@@ -16,7 +17,7 @@ struct NameComponent : Component<NameComponent> {
 };
 
 struct MeshComponent : Component<MeshComponent> {
-  Mesh mesh;
+  std::shared_ptr<Mesh> mesh;
   glm::vec4 overrideColor{0.0f};
 
   void inspect(EntityId) {}

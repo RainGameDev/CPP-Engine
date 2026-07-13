@@ -4,11 +4,9 @@
 #include <vector>
 
 class AssetManager {
-
-private:
+public:
   std::vector<std::unique_ptr<IAssetLoader>> loaders;
 
-public:
   /// Registers an assetloader to the manager.
   void addLoader(std::unique_ptr<IAssetLoader> loader) {
     loaders.push_back(std::move(loader));

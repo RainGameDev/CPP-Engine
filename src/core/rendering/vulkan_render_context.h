@@ -2,6 +2,7 @@
 
 #include "assets/shader_loader.h"
 #include <cstdint>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS 1
@@ -11,10 +12,8 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include "../assets/asset_manager.h"
 #include "mesh.h"
 #include "ubo.h"
-#include "vertex.h"
 
 #include "ecs/world.h"
 
@@ -96,13 +95,9 @@ public:
   vk::raii::DescriptorSetLayout materialSetLayout = nullptr;
   vk::raii::DescriptorSets descriptorSets = nullptr;
 
-  vk::raii::DescriptorPool imguiPool = nullptr;
-
   uint32_t currentFrame = 0;
 
   World *world = nullptr;
-
-  AssetManager assetManager;
 
   // Vulkan setup
   void createInstance();
@@ -148,8 +143,7 @@ public:
   void createDescriptorPool();
 
   void createCubeMesh();
-  Mesh createIndicatorMesh();
-  Mesh loadObjMesh(const std::string &objPath, MaterialAsset *material);
+  std::shared_ptr<Mesh> createIndicatorMesh();
   void ensureTransformBuffer(uint32_t frame, uint32_t meshCount);
   void updateLightBuffer(uint32_t frame);
   void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,

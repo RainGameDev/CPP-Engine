@@ -165,6 +165,7 @@ void VulkanRenderingContext::createCubeMesh() {
     }
   }
 
+  AssetManager &assetManager = *world->get_resource<AssetManager>();
   auto *materials = assetManager.getLoader<MaterialAsset>();
   Mesh cube{};
 
@@ -213,11 +214,11 @@ void VulkanRenderingContext::createCubeMesh() {
   cube.material = &materials->getAsset("brick.mat");
 
   auto entity = world->create_entity();
-  world->add_component(entity, MeshComponent{.mesh = std::move(cube)});
+  world->add_component(entity, MeshComponent{.mesh = std::make_shared<Mesh>(std::move(cube))});
   world->add_component(entity, TransformComponent{});
 }
 
-Mesh VulkanRenderingContext::createIndicatorMesh() {
+std::shared_ptr<Mesh> VulkanRenderingContext::createIndicatorMesh() {
   float s = 0.5f;
   std::vector<Vertex> vertices = {
       // Top pyramid
@@ -244,9 +245,15 @@ Mesh VulkanRenderingContext::createIndicatorMesh() {
   };
   std::vector<Face> faces = {
       // Top
-      {0, 1, 2}, {0, 2, 3}, {0, 3, 4}, {0, 4, 1},
+      {0, 1, 2},
+      {0, 2, 3},
+      {0, 3, 4},
+      {0, 4, 1},
       // Bottom
-      {5, 7, 6}, {5, 8, 7}, {5, 9, 8}, {5, 6, 9},
+      {5, 7, 6},
+      {5, 8, 7},
+      {5, 9, 8},
+      {5, 6, 9},
   };
 
   std::vector<uint32_t> indices;
@@ -259,6 +266,7 @@ Mesh VulkanRenderingContext::createIndicatorMesh() {
     }
   }
 
+  AssetManager &assetManager = *world->get_resource<AssetManager>();
   auto *materials = assetManager.getLoader<MaterialAsset>();
   Mesh mesh{};
 
@@ -306,59 +314,5 @@ Mesh VulkanRenderingContext::createIndicatorMesh() {
   mesh.indexCount = static_cast<uint32_t>(indices.size());
   mesh.material = &materials->getAsset("debug.mat");
 
-  return mesh;
-}
-
-Mesh VulkanRenderingContext::loadObjMesh(const std::string &objPath,
-                                         MaterialAsset *material) {
-  ObjData data = loadObj(objPath);
-
-  Mesh mesh{};
-  mesh.indexCount = static_cast<uint32_t>(data.indices.size());
-  mesh.vertexCount = static_cast<uint32_t>(data.vertices.size());
-  mesh.material = material;
-
-  // Vertex buffer
-  vk::DeviceSize vertexBufferSize = sizeof(Vertex) * data.vertices.size();
-  vk::raii::Buffer vertexStagingBuffer{nullptr};
-  vk::raii::DeviceMemory vertexStagingMemory{nullptr};
-  createBuffer(vertexBufferSize, vk::BufferUsageFlagBits::eTransferSrc,
-               vk::MemoryPropertyFlagBits::eHostVisible |
-                   vk::MemoryPropertyFlagBits::eHostCoherent,
-               vertexStagingBuffer, vertexStagingMemory);
-
-  void *mapped = vertexStagingMemory.mapMemory(0, vertexBufferSize);
-  memcpy(mapped, data.vertices.data(), vertexBufferSize);
-  vertexStagingMemory.unmapMemory();
-
-  createBuffer(vertexBufferSize,
-               vk::BufferUsageFlagBits::eVertexBuffer |
-                   vk::BufferUsageFlagBits::eTransferDst,
-               vk::MemoryPropertyFlagBits::eDeviceLocal, mesh.vertexBuffer,
-               mesh.vertexMemory);
-
-  copyBuffer(vertexStagingBuffer, mesh.vertexBuffer, vertexBufferSize);
-
-  // Index buffer
-  vk::DeviceSize indexBufferSize = sizeof(uint32_t) * data.indices.size();
-  vk::raii::Buffer indexStagingBuffer{nullptr};
-  vk::raii::DeviceMemory indexStagingMemory{nullptr};
-  createBuffer(indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc,
-               vk::MemoryPropertyFlagBits::eHostVisible |
-                   vk::MemoryPropertyFlagBits::eHostCoherent,
-               indexStagingBuffer, indexStagingMemory);
-
-  mapped = indexStagingMemory.mapMemory(0, indexBufferSize);
-  memcpy(mapped, data.indices.data(), indexBufferSize);
-  indexStagingMemory.unmapMemory();
-
-  createBuffer(indexBufferSize,
-               vk::BufferUsageFlagBits::eIndexBuffer |
-                   vk::BufferUsageFlagBits::eTransferDst,
-               vk::MemoryPropertyFlagBits::eDeviceLocal, mesh.indexBuffer,
-               mesh.indexMemory);
-
-  copyBuffer(indexStagingBuffer, mesh.indexBuffer, indexBufferSize);
-
-  return mesh;
+  return std::make_shared<Mesh>(std::move(mesh));
 }

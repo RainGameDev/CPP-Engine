@@ -88,11 +88,11 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
     }
 
     for (auto &entry : drawList) {
-      auto &mesh = entry.mc->mesh;
+      auto *mesh = entry.mc->mesh.get();
 
       ShaderKey key;
-      if (mesh.material != nullptr) {
-        key = {mesh.material->vertexShader, mesh.material->fragmentShader};
+      if (mesh->material != nullptr) {
+        key = {mesh->material->vertexShader, mesh->material->fragmentShader};
       } else {
         key = {"sdr_default_model.vert", "sdr_default_model.frag"};
       }
@@ -114,7 +114,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
       commandBuffer.setScissor(
           0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 
-      auto &mat = mesh.material;
+      auto &mat = mesh->material;
 
       commandBuffer.bindDescriptorSets(
           vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
@@ -132,10 +132,10 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
                                       vk::ShaderStageFlagBits::eFragment,
                                   0, sizeof(pc), &pc);
 
-      commandBuffer.bindVertexBuffers(0, {*mesh.vertexBuffer}, {0});
-      commandBuffer.bindIndexBuffer(*mesh.indexBuffer, 0,
+      commandBuffer.bindVertexBuffers(0, {*mesh->vertexBuffer}, {0});
+      commandBuffer.bindIndexBuffer(*mesh->indexBuffer, 0,
                                     vk::IndexType::eUint32);
-      commandBuffer.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+      commandBuffer.drawIndexed(mesh->indexCount, 1, 0, 0, 0);
     }
   }
   // render imgui

@@ -39,6 +39,7 @@ vk::Pipeline VulkanRenderingContext::getOrCreatePipeline(const ShaderKey &key) {
 }
 
 void VulkanRenderingContext::createPipelineForKey(const ShaderKey &key) {
+  AssetManager &assetManager = *world->get_resource<AssetManager>();
   auto *shaders = assetManager.getLoader<ShaderAsset>();
 
   std::cout << key.fragment + " " + key.vertex << std::endl;

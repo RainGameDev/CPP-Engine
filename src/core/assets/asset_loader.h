@@ -8,6 +8,12 @@ class IAssetLoader {
 public:
   virtual ~IAssetLoader() = default;
   virtual void loadFiles(const std::string &directory) = 0;
+
+  struct AssetEntry {
+    std::string name;
+  };
+
+  virtual std::vector<AssetEntry> getAllAssetEntries() const = 0;
 };
 
 template <typename AssetType> class AssetLoader : public IAssetLoader {
@@ -32,6 +38,14 @@ public:
   AssetType *tryGetAsset(const std::string &name) {
     auto it = assets.find(name);
     return it != assets.end() ? &it->second : nullptr;
+  }
+
+  std::vector<AssetEntry> getAllAssetEntries() const override {
+    std::vector<AssetEntry> entries;
+    entries.reserve(assets.size());
+    for (const auto &[name, _] : assets)
+      entries.push_back({name});
+    return entries;
   }
 
   void loadFiles(const std::string &directory) override {
