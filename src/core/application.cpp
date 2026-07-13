@@ -8,6 +8,7 @@
 #include "ecs/system_registry.h"
 #include "ecs/world.h"
 #include "glm/ext/vector_float3.hpp"
+#include "ui/topbar.h"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -60,8 +61,8 @@ void Application::run() {
   auto *models = assetManager.getLoader<MeshAsset>();
   auto meshEntity = world.create_entity();
   world.add_component(
-      meshEntity,
-      MeshComponent{.mesh = std::make_shared<Mesh>(std::move(models->getAsset("mesh").mesh))});
+      meshEntity, MeshComponent{.mesh = std::make_shared<Mesh>(
+                                    std::move(models->getAsset("mesh").mesh))});
   world.add_component(meshEntity, TransformComponent{});
 
   cameraEntity = world.create_entity();
@@ -123,9 +124,8 @@ void Application::mainLoop() {
     UniformBufferObject ubo{};
     ubo.view = cam->getViewMatrix(*camTc);
     ubo.pos = glm::vec4(cam->getPosition(*camTc), 0.0);
-    ubo.proj = cam->getProjectionMatrix(
-        renderer.viewportExtent.width /
-        (float)renderer.viewportExtent.height);
+    ubo.proj = cam->getProjectionMatrix(renderer.viewportExtent.width /
+                                        (float)renderer.viewportExtent.height);
     ubo.proj[1][1] *= -1;
 
     renderer.updateUniformBuffer(renderer.currentFrame, ubo);
@@ -147,33 +147,7 @@ void Application::mainLoop() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
-
-    static bool dockspaceInitialized = false;
-    if (!dockspaceInitialized) {
-      dockspaceInitialized = true;
-
-      ImGuiID dockspaceId = ImGui::GetID("MyDockSpace");
-      ImGui::DockBuilderRemoveNode(dockspaceId);
-      ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
-      ImGui::DockBuilderSetNodeSize(dockspaceId,
-                                    ImGui::GetMainViewport()->Size);
-
-      ImGuiID right;
-      ImGuiID bottom;
-      ImGuiID central;
-      ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, &right,
-                                  &bottom);
-      ImGui::DockBuilderSplitNode(bottom, ImGuiDir_Down, 0.25f, &bottom,
-                                  &central);
-
-      ImGui::DockBuilderDockWindow("Assets", bottom);
-      ImGui::DockBuilderDockWindow("Hierarchy", right);
-      ImGui::DockBuilderDockWindow("Inspector", right);
-      ImGui::DockBuilderDockWindow("Viewport", central);
-
-      ImGui::DockBuilderFinish(dockspaceId);
-    }
+    topbar();
 
     // run all update functions
     tick(deltaTime);
@@ -185,10 +159,11 @@ void Application::mainLoop() {
       ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_NoBackground);
       ImVec2 size = ImGui::GetContentRegionAvail();
       if (size.x > 0 && size.y > 0) {
-        renderer.pendingViewportExtent = {
-            static_cast<uint32_t>(size.x), static_cast<uint32_t>(size.y)};
+        renderer.pendingViewportExtent = {static_cast<uint32_t>(size.x),
+                                          static_cast<uint32_t>(size.y)};
         ImGui::Image(
-            reinterpret_cast<ImTextureID>(renderer.viewportDescriptorSet), size);
+            reinterpret_cast<ImTextureID>(renderer.viewportDescriptorSet),
+            size);
       }
       ImGui::End();
       ImGui::PopStyleVar();
@@ -242,7 +217,7 @@ void Application::processInput(float deltaTime) {
       glfwPollEvents();
   }
 
-  if (!mouseCaptured)
+  if (!glfwGetMouseButton(window, 1))
     return;
 
   glm::vec3 inputDir = glm::vec3(0.0);

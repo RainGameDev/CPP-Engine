@@ -158,5 +158,5 @@ void main() {
   }
 
   vec3 ambient = vec3(0.03) * albedo.rgb * ao;
-  outColor = vec4(ambient + Lo, albedo.a);
+  outColor = vec4(ambient + Lo, 1.0);
 }

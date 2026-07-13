@@ -19,6 +19,7 @@
 struct EditorStatus {
   EntityId selectedID;
   IAssetLoader *selectedAssetLoader = nullptr;
+  bool isViewportHovered = false;
 };
 
 void hierarchy(World &world) {
@@ -126,59 +127,3 @@ void assets(World &world) {
   ImGui::End();
 }
 UPDATE_SYSTEM(assets);
-
-void topbar(World &world) {
-  ImGuiViewport *viewport = ImGui::GetMainViewport();
-  ImGui::SetNextWindowPos(viewport->WorkPos);
-  ImGui::SetNextWindowSize(viewport->WorkSize);
-  ImGui::SetNextWindowViewport(viewport->ID);
-
-  ImGuiWindowFlags window_flags =
-      ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking |
-      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
-      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
-
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-
-  ImGui::Begin("DockSpace Host", nullptr, window_flags);
-  ImGui::PopStyleVar(3);
-
-  // The actual dockspace
-  ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
-  ImGui::DockSpace(dockspace_id, ImVec2(0, 0),
-                   ImGuiDockNodeFlags_PassthruCentralNode);
-
-  // Menu bar lives inside this same window
-  if (ImGui::BeginMenuBar()) {
-    if (ImGui::BeginMenu("File")) {
-      if (ImGui::MenuItem("New")) { /* ... */
-      }
-      if (ImGui::MenuItem("Open...")) { /* ... */
-      }
-      if (ImGui::MenuItem("Save")) { /* ... */
-      }
-      ImGui::Separator();
-      if (ImGui::MenuItem("Exit")) { /* ... */
-      }
-      ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Edit")) {
-      if (ImGui::MenuItem("Undo", "Ctrl+Z")) {
-      }
-      if (ImGui::MenuItem("Redo", "Ctrl+Y")) {
-      }
-      ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("View")) {
-      // ImGui::MenuItem("Show Demo Window", nullptr, &show_demo);
-      ImGui::EndMenu();
-    }
-    ImGui::EndMenuBar();
-  }
-
-  ImGui::End();
-}
-UPDATE_SYSTEM(topbar);
