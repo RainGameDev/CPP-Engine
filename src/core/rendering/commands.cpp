@@ -26,40 +26,66 @@ void VulkanRenderingContext::createCommandBuffer() {
 }
 
 void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
-                                            uint32_t currentFrame) {
+                                                 uint32_t currentFrame) {
   commandBuffer.begin({});
-  transition_image_layout(imageIndex, vk::ImageLayout::eUndefined,
+
+  // --- Pass 1: Render 3D scene to viewport render target ---
+
+  transition_image_layout(*viewportColorImage, vk::ImageLayout::eUndefined,
                           vk::ImageLayout::eColorAttachmentOptimal, {},
                           vk::AccessFlagBits2::eColorAttachmentWrite,
                           vk::PipelineStageFlagBits2::eColorAttachmentOutput,
                           vk::PipelineStageFlagBits2::eColorAttachmentOutput);
 
-  vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.25f, 1.0f, 1.0f);
-  vk::ClearValue depthClear = vk::ClearDepthStencilValue(1.0f, 0);
-  std::array<vk::ClearValue, 2> clearValues = {clearColor, depthClear};
+  {
+    vk::ImageMemoryBarrier2 depthBarrier = {
+        .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+        .srcAccessMask = {},
+        .dstStageMask = vk::PipelineStageFlagBits2::eEarlyFragmentTests,
+        .dstAccessMask = vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
+        .oldLayout = vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = *viewportDepthImage,
+        .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
+                             .baseMipLevel = 0,
+                             .levelCount = 1,
+                             .baseArrayLayer = 0,
+                             .layerCount = 1}};
+    vk::DependencyInfo depthDepInfo = {.dependencyFlags = {},
+                                       .imageMemoryBarrierCount = 1,
+                                       .pImageMemoryBarriers = &depthBarrier};
+    commandBuffer.pipelineBarrier2(depthDepInfo);
+  }
 
-  vk::RenderingAttachmentInfo colorAttachmentInfo = {
-      .imageView = swapChainImageViews[imageIndex],
+  vk::ClearValue viewportClear = vk::ClearColorValue(0.0f, 0.1f, 0.75f, 1.0f);
+  vk::ClearValue viewportDepthClear = vk::ClearDepthStencilValue(1.0f, 0);
+  std::array<vk::ClearValue, 2> viewportClearValues = {viewportClear,
+                                                       viewportDepthClear};
+
+  vk::RenderingAttachmentInfo viewportColorAttachment = {
+      .imageView = *viewportColorImageView,
       .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
       .loadOp = vk::AttachmentLoadOp::eClear,
       .storeOp = vk::AttachmentStoreOp::eStore,
-      .clearValue = clearColor};
+      .clearValue = viewportClear};
 
-  vk::RenderingAttachmentInfo depthAttachmentInfo = {
-      .imageView = depthImageView,
+  vk::RenderingAttachmentInfo viewportDepthAttachment = {
+      .imageView = *viewportDepthImageView,
       .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
       .loadOp = vk::AttachmentLoadOp::eClear,
       .storeOp = vk::AttachmentStoreOp::eDontCare,
-      .clearValue = depthClear};
+      .clearValue = viewportDepthClear};
 
-  vk::RenderingInfo renderingInfo = {
-      .renderArea = {.offset = {0, 0}, .extent = swapChainExtent},
+  vk::RenderingInfo viewportRenderingInfo = {
+      .renderArea = {.offset = {0, 0}, .extent = viewportExtent},
       .layerCount = 1,
       .colorAttachmentCount = 1,
-      .pColorAttachments = &colorAttachmentInfo,
-      .pDepthAttachment = &depthAttachmentInfo};
+      .pColorAttachments = &viewportColorAttachment,
+      .pDepthAttachment = &viewportDepthAttachment};
 
-  commandBuffer.beginRendering(renderingInfo);
+  commandBuffer.beginRendering(viewportRenderingInfo);
 
   updateLightBuffer(currentFrame);
 
@@ -71,19 +97,21 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
   std::vector<DrawEntry> drawList;
 
   Query<MeshComponent, TransformComponent> meshQuery(*world);
-  meshQuery.for_each([&](EntityId id, MeshComponent &mc, TransformComponent &tc) {
-    drawList.push_back({&mc, &tc, static_cast<uint32_t>(drawList.size())});
-  });
+  meshQuery.for_each(
+      [&](EntityId id, MeshComponent &mc, TransformComponent &tc) {
+        drawList.push_back({&mc, &tc, static_cast<uint32_t>(drawList.size())});
+      });
 
   if (!drawList.empty()) {
     ensureTransformBuffer(currentFrame, static_cast<uint32_t>(drawList.size()));
 
     for (auto &entry : drawList) {
       TransformUBO tu{.pos = glm::vec4(entry.tc->position, 0.0f),
-                       .rotation = glm::vec4(entry.tc->rotation, 0.0f),
-                       .scale = glm::vec4(entry.tc->scale, 0.0f)};
+                      .rotation = glm::vec4(entry.tc->rotation, 0.0f),
+                      .scale = glm::vec4(entry.tc->scale, 0.0f)};
       vk::DeviceSize offset = sizeof(TransformUBO) * entry.index;
-      memcpy(static_cast<uint8_t *>(transformBuffers[currentFrame].mapped) + offset,
+      memcpy(static_cast<uint8_t *>(transformBuffers[currentFrame].mapped) +
+                 offset,
              &tu, sizeof(tu));
     }
 
@@ -103,30 +131,34 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
 
       uint32_t dynamicOffset =
           static_cast<uint32_t>(sizeof(TransformUBO) * entry.index);
-      commandBuffer.bindDescriptorSets(
-          vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
-          {*descriptorSets[currentFrame]}, {dynamicOffset});
 
       commandBuffer.setViewport(
           0,
-          vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width),
-                       static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
-      commandBuffer.setScissor(
-          0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+          vk::Viewport(0.0f, 0.0f, static_cast<float>(viewportExtent.width),
+                       static_cast<float>(viewportExtent.height), 0.0f, 1.0f));
+      commandBuffer.setScissor(0,
+                               vk::Rect2D(vk::Offset2D(0, 0), viewportExtent));
 
-      auto &mat = mesh->material;
+      if (mesh->material != nullptr) {
+        commandBuffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
+            {*descriptorSets[currentFrame], *mesh->material->descriptorSet},
+            {dynamicOffset});
+      } else {
+        commandBuffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
+            {*descriptorSets[currentFrame]}, {dynamicOffset});
+      }
 
-      commandBuffer.bindDescriptorSets(
-          vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
-          {*descriptorSets[currentFrame], *mat->descriptorSet}, {dynamicOffset});
-
+      MaterialAsset *mat = mesh->material;
       MaterialPushConstants pc{
-          .baseColorFactor = entry.mc->overrideColor.a > 0.0f
-                                 ? entry.mc->overrideColor
-                                 : mat->baseColorFactor,
-          .metallicFactor = mat->metallicFactor,
-          .roughnessFactor = mat->roughnessFactor,
-          .parallaxStrength = mat->parallaxStrength};
+          .baseColorFactor =
+              entry.mc->overrideColor.a > 0.0f
+                  ? entry.mc->overrideColor
+                  : (mat ? mat->baseColorFactor : glm::vec4(1.0f)),
+          .metallicFactor = mat ? mat->metallicFactor : 1.0f,
+          .roughnessFactor = mat ? mat->roughnessFactor : 1.0f,
+          .parallaxStrength = mat ? mat->parallaxStrength : 0.0f};
       commandBuffer.pushConstants(*pipelineLayout,
                                   vk::ShaderStageFlagBits::eVertex |
                                       vk::ShaderStageFlagBits::eFragment,
@@ -138,7 +170,43 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
       commandBuffer.drawIndexed(mesh->indexCount, 1, 0, 0, 0);
     }
   }
-  // render imgui
+
+  commandBuffer.endRendering();
+
+  transition_image_layout(*viewportColorImage,
+                          vk::ImageLayout::eColorAttachmentOptimal,
+                          vk::ImageLayout::eShaderReadOnlyOptimal,
+                          vk::AccessFlagBits2::eColorAttachmentWrite,
+                          vk::AccessFlagBits2::eShaderRead,
+                          vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                          vk::PipelineStageFlagBits2::eFragmentShader);
+
+  // --- Pass 2: Render ImGui to swapchain ---
+
+  transition_image_layout(imageIndex, vk::ImageLayout::eUndefined,
+                          vk::ImageLayout::eColorAttachmentOptimal, {},
+                          vk::AccessFlagBits2::eColorAttachmentWrite,
+                          vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                          vk::PipelineStageFlagBits2::eColorAttachmentOutput);
+
+  vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+  std::array<vk::ClearValue, 1> imguiClearValues = {clearColor};
+
+  vk::RenderingAttachmentInfo imguiColorAttachment = {
+      .imageView = swapChainImageViews[imageIndex],
+      .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+      .loadOp = vk::AttachmentLoadOp::eClear,
+      .storeOp = vk::AttachmentStoreOp::eStore,
+      .clearValue = clearColor};
+
+  vk::RenderingInfo imguiRenderingInfo = {
+      .renderArea = {.offset = {0, 0}, .extent = swapChainExtent},
+      .layerCount = 1,
+      .colorAttachmentCount = 1,
+      .pColorAttachments = &imguiColorAttachment};
+
+  commandBuffer.beginRendering(imguiRenderingInfo);
+
   ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer,
                                   VK_NULL_HANDLE);
 
@@ -168,6 +236,32 @@ void VulkanRenderingContext::transition_image_layout(
       .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
       .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
       .image = swapChainImages[imageIndex],
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .baseMipLevel = 0,
+                           .levelCount = 1,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1}};
+  vk::DependencyInfo dependencyInfo = {.dependencyFlags = {},
+                                       .imageMemoryBarrierCount = 1,
+                                       .pImageMemoryBarriers = &barrier};
+  commandBuffer.pipelineBarrier2(dependencyInfo);
+}
+
+void VulkanRenderingContext::transition_image_layout(
+    vk::Image image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout,
+    vk::AccessFlags2 srcAccessMask, vk::AccessFlags2 dstAccessMask,
+    vk::PipelineStageFlags2 srcStageMask,
+    vk::PipelineStageFlags2 dstStageMask) {
+  vk::ImageMemoryBarrier2 barrier = {
+      .srcStageMask = srcStageMask,
+      .srcAccessMask = srcAccessMask,
+      .dstStageMask = dstStageMask,
+      .dstAccessMask = dstAccessMask,
+      .oldLayout = oldLayout,
+      .newLayout = newLayout,
+      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .image = image,
       .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
                            .baseMipLevel = 0,
                            .levelCount = 1,

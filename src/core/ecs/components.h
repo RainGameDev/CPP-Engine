@@ -13,7 +13,7 @@ struct NameComponent : Component<NameComponent> {
 
   void setName(const std::string &str) { name = str; }
 
-  void inspect(EntityId) {}
+  void inspect(EntityId) { ImGui::SeparatorText("Name"); }
 };
 
 struct MeshComponent : Component<MeshComponent> {

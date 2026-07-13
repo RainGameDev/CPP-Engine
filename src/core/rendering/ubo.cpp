@@ -77,11 +77,12 @@ void VulkanRenderingContext::createUniformBuffers() {
 
 void VulkanRenderingContext::createDescriptorSetLayout() {
   std::array<vk::DescriptorSetLayoutBinding, 3> set0Bindings = {{
-      {.binding = 0,
-       .descriptorType = vk::DescriptorType::eUniformBuffer,
-       .descriptorCount = 1,
-       .stageFlags = vk::ShaderStageFlagBits::eVertex,
-       .pImmutableSamplers = nullptr},
+       {.binding = 0,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eVertex |
+                     vk::ShaderStageFlagBits::eFragment,
+        .pImmutableSamplers = nullptr},
       {.binding = 1,
        .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
        .descriptorCount = 1,

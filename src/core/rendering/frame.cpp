@@ -5,10 +5,13 @@
 #include <stdexcept>
 
 void VulkanRenderingContext::createSyncObjects() {
-  presentCompleteSemaphore =
-      vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
-  renderFinishedSemaphore =
-      vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
+  uint32_t count = static_cast<uint32_t>(swapChainImages.size());
+  presentCompleteSemaphores.clear();
+  renderFinishedSemaphores.clear();
+  for (uint32_t i = 0; i < count; i++) {
+    presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+    renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
+  }
   drawFence =
       vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
 }
@@ -20,7 +23,7 @@ void VulkanRenderingContext::drawFrame() {
   }
 
   auto [result, imageIndex] = swapChain.acquireNextImage(
-      UINT64_MAX, *presentCompleteSemaphore, nullptr);
+      UINT64_MAX, *presentCompleteSemaphores[currentFrame], nullptr);
 
   if (result == vk::Result::eErrorOutOfDateKHR ||
       result == vk::Result::eSuboptimalKHR) {
@@ -39,17 +42,17 @@ void VulkanRenderingContext::drawFrame() {
       vk::PipelineStageFlagBits::eColorAttachmentOutput);
   const vk::SubmitInfo submitInfo{
       .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &*presentCompleteSemaphore,
+      .pWaitSemaphores = &*presentCompleteSemaphores[currentFrame],
       .pWaitDstStageMask = &waitDestinationStageMask,
       .commandBufferCount = 1,
       .pCommandBuffers = &*commandBuffer,
       .signalSemaphoreCount = 1,
-      .pSignalSemaphores = &*renderFinishedSemaphore};
+      .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame]};
   queue.submit(submitInfo, *drawFence);
 
   const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
                                           .pWaitSemaphores =
-                                              &*renderFinishedSemaphore,
+                                              &*renderFinishedSemaphores[currentFrame],
                                           .swapchainCount = 1,
                                           .pSwapchains = &*swapChain,
                                           .pImageIndices = &imageIndex};

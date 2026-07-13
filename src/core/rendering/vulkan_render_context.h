@@ -79,8 +79,8 @@ public:
 
   vk::raii::CommandPool commandPool = nullptr;
   vk::raii::CommandBuffer commandBuffer = nullptr;
-  vk::raii::Semaphore presentCompleteSemaphore = nullptr;
-  vk::raii::Semaphore renderFinishedSemaphore = nullptr;
+  std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
+  std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
   vk::raii::Fence drawFence = nullptr;
   std::vector<const char *> requiredDeviceExtension = {
       vk::KHRSwapchainExtensionName};
@@ -94,6 +94,18 @@ public:
   vk::raii::DescriptorSetLayout descriptorSetLayout = nullptr;
   vk::raii::DescriptorSetLayout materialSetLayout = nullptr;
   vk::raii::DescriptorSets descriptorSets = nullptr;
+
+  // Viewport render target
+  vk::raii::Image viewportColorImage{nullptr};
+  vk::raii::DeviceMemory viewportColorImageMemory{nullptr};
+  vk::raii::ImageView viewportColorImageView{nullptr};
+  vk::raii::Image viewportDepthImage{nullptr};
+  vk::raii::DeviceMemory viewportDepthImageMemory{nullptr};
+  vk::raii::ImageView viewportDepthImageView{nullptr};
+  vk::raii::Sampler viewportSampler{nullptr};
+  VkDescriptorSet viewportDescriptorSet = VK_NULL_HANDLE;
+  vk::Extent2D viewportExtent{800, 600};
+  vk::Extent2D pendingViewportExtent{800, 600};
 
   uint32_t currentFrame = 0;
 
@@ -130,6 +142,17 @@ public:
                                vk::AccessFlags2 dst_access_mask,
                                vk::PipelineStageFlags2 src_stage_mask,
                                vk::PipelineStageFlags2 dst_stage_mask);
+  void transition_image_layout(vk::Image image, vk::ImageLayout old_layout,
+                               vk::ImageLayout new_layout,
+                               vk::AccessFlags2 src_access_mask,
+                               vk::AccessFlags2 dst_access_mask,
+                               vk::PipelineStageFlags2 src_stage_mask,
+                               vk::PipelineStageFlags2 dst_stage_mask);
+
+  // Viewport
+  void createViewportResources(uint32_t width, uint32_t height);
+  void cleanupViewportResources();
+  void recreateViewportIfNeeded();
 
   // Graphics Pipelines
   void createGraphicsPipelineLayout();

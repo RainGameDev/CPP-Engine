@@ -7,6 +7,7 @@
 #include "ecs/components.h"
 #include "ecs/light.h"
 #include "ecs/query.h"
+#include "imgui_impl_vulkan.h"
 
 #include <cstdint>
 #include <memory>
@@ -35,9 +36,15 @@ void VulkanRenderingContext::init(GLFWwindow *window, World &ecsWorld) {
   createSyncObjects();
 
   initImGui();
+
+  createViewportResources(viewportExtent.width, viewportExtent.height);
 }
 
-void VulkanRenderingContext::cleanup() { cleanupImGui(); }
+void VulkanRenderingContext::cleanup() {
+  device.waitIdle();
+  cleanupViewportResources();
+  cleanupImGui();
+}
 
 void VulkanRenderingContext::updateUniformBuffer(
     uint32_t frame, const UniformBufferObject &ubo) {
@@ -81,7 +88,7 @@ void VulkanRenderingContext::ensureTransformBuffer(uint32_t frame,
 
   vk::DescriptorBufferInfo bufferInfo{.buffer = *transformBuffers[frame].buffer,
                                       .offset = 0,
-                                      .range = required};
+                                      .range = sizeof(TransformUBO)};
 
   vk::WriteDescriptorSet write{.dstSet = descriptorSets[frame],
                                .dstBinding = 1,
@@ -189,6 +196,122 @@ void VulkanRenderingContext::createDepthResources() {
                            .baseArrayLayer = 0,
                            .layerCount = 1}};
   depthImageView = vk::raii::ImageView(device, viewInfo);
+}
+
+void VulkanRenderingContext::createViewportResources(uint32_t width,
+                                                     uint32_t height) {
+  if (width == 0 || height == 0)
+    return;
+
+  cleanupViewportResources();
+
+  viewportExtent = {width, height};
+
+  // Color image
+  vk::ImageCreateInfo colorImageInfo{
+      .imageType = vk::ImageType::e2D,
+      .format = swapChainSurfaceFormat.format,
+      .extent = {width, height, 1},
+      .mipLevels = 1,
+      .arrayLayers = 1,
+      .samples = vk::SampleCountFlagBits::e1,
+      .tiling = vk::ImageTiling::eOptimal,
+      .usage = vk::ImageUsageFlagBits::eColorAttachment |
+               vk::ImageUsageFlagBits::eSampled,
+      .sharingMode = vk::SharingMode::eExclusive,
+      .initialLayout = vk::ImageLayout::eUndefined};
+  viewportColorImage = vk::raii::Image(device, colorImageInfo);
+
+  auto colorMemReqs = viewportColorImage.getMemoryRequirements();
+  vk::MemoryAllocateInfo colorAllocInfo{
+      .allocationSize = colorMemReqs.size,
+      .memoryTypeIndex = findMemoryType(
+          colorMemReqs.memoryTypeBits,
+          vk::MemoryPropertyFlagBits::eDeviceLocal)};
+  viewportColorImageMemory = vk::raii::DeviceMemory(device, colorAllocInfo);
+  viewportColorImage.bindMemory(*viewportColorImageMemory, 0);
+
+  vk::ImageViewCreateInfo colorViewInfo{
+      .image = *viewportColorImage,
+      .viewType = vk::ImageViewType::e2D,
+      .format = swapChainSurfaceFormat.format,
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .baseMipLevel = 0,
+                           .levelCount = 1,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1}};
+  viewportColorImageView = vk::raii::ImageView(device, colorViewInfo);
+
+  // Depth image
+  vk::ImageCreateInfo depthImageInfo{
+      .imageType = vk::ImageType::e2D,
+      .format = depthFormat,
+      .extent = {width, height, 1},
+      .mipLevels = 1,
+      .arrayLayers = 1,
+      .samples = vk::SampleCountFlagBits::e1,
+      .tiling = vk::ImageTiling::eOptimal,
+      .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
+      .sharingMode = vk::SharingMode::eExclusive,
+      .initialLayout = vk::ImageLayout::eUndefined};
+  viewportDepthImage = vk::raii::Image(device, depthImageInfo);
+
+  auto depthMemReqs = viewportDepthImage.getMemoryRequirements();
+  vk::MemoryAllocateInfo depthAllocInfo{
+      .allocationSize = depthMemReqs.size,
+      .memoryTypeIndex = findMemoryType(
+          depthMemReqs.memoryTypeBits,
+          vk::MemoryPropertyFlagBits::eDeviceLocal)};
+  viewportDepthImageMemory = vk::raii::DeviceMemory(device, depthAllocInfo);
+  viewportDepthImage.bindMemory(*viewportDepthImageMemory, 0);
+
+  vk::ImageViewCreateInfo depthViewInfo{
+      .image = *viewportDepthImage,
+      .viewType = vk::ImageViewType::e2D,
+      .format = depthFormat,
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
+                           .baseMipLevel = 0,
+                           .levelCount = 1,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1}};
+  viewportDepthImageView = vk::raii::ImageView(device, depthViewInfo);
+
+  // Sampler for ImGui
+  viewportSampler = vk::raii::Sampler(
+      device, {.magFilter = vk::Filter::eLinear,
+               .minFilter = vk::Filter::eLinear,
+               .mipmapMode = vk::SamplerMipmapMode::eNearest,
+               .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+               .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+               .addressModeW = vk::SamplerAddressMode::eClampToEdge});
+
+  // ImGui descriptor set (allocated from ImGui's internal pool, do not free manually)
+  viewportDescriptorSet = ImGui_ImplVulkan_AddTexture(
+      *viewportSampler, *viewportColorImageView,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+}
+
+void VulkanRenderingContext::cleanupViewportResources() {
+  if (viewportDescriptorSet != VK_NULL_HANDLE) {
+    ImGui_ImplVulkan_RemoveTexture(viewportDescriptorSet);
+    viewportDescriptorSet = VK_NULL_HANDLE;
+  }
+  viewportSampler = nullptr;
+  viewportDepthImageView = nullptr;
+  viewportDepthImage = nullptr;
+  viewportDepthImageMemory = nullptr;
+  viewportColorImageView = nullptr;
+  viewportColorImage = nullptr;
+  viewportColorImageMemory = nullptr;
+}
+
+void VulkanRenderingContext::recreateViewportIfNeeded() {
+  if (pendingViewportExtent.width != viewportExtent.width ||
+      pendingViewportExtent.height != viewportExtent.height) {
+    device.waitIdle();
+    createViewportResources(pendingViewportExtent.width,
+                            pendingViewportExtent.height);
+  }
 }
 
 void VulkanRenderingContext::createDescriptorPool() {
