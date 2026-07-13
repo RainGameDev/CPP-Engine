@@ -3,20 +3,17 @@
 #include "assets/material_loader.h"
 #include "assets/model_loader.h"
 #include "ecs/components.h"
+#include "ecs/input_manager.h"
 #include "ecs/light.h"
 #include "ecs/query.h"
-#include "ecs/system_registry.h"
 #include "ecs/world.h"
 #include "glm/ext/vector_float3.hpp"
-#include "ui/topbar.h"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
-#include "imgui_internal.h"
 #include <GLFW/glfw3.h>
 #include <cstdint>
-#include <print>
 
 void Application::run() {
   glfwInit();
@@ -41,7 +38,9 @@ void Application::run() {
   world.add_resource<AssetManager>();
   AssetManager &assetManager = *world.get_resource<AssetManager>();
 
+  renderer.editorMode = editorMode;
   renderer.init(window, world);
+  world.add_resource<VulkanRenderingContext *>(&renderer);
   assetManager.addLoader(std::make_unique<ShaderLoader>(renderer.device));
   assetManager.loadDirectory("assets/shaders");
   assetManager.addLoader(std::make_unique<TextureLoader>(
@@ -91,6 +90,29 @@ void Application::run() {
   world.add_component(debugIndicatorEntity,
                       MeshComponent{.mesh = indicatorMesh});
   world.add_component(debugIndicatorEntity, TransformComponent{});
+
+  addUI(
+      [this]() {
+        ImGui::Begin("Debug", nullptr);
+        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+
+        auto *cam = world.get_storage<Camera>().get(cameraEntity);
+        auto *camTc = world.get_storage<TransformComponent>().get(cameraEntity);
+        glm::vec3 position = cam->getPosition(*camTc);
+        ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y,
+                    position.z);
+
+        uint32_t vertexCount = 0;
+        Query<MeshComponent> meshQuery(world);
+        meshQuery.for_each([&](EntityId id, MeshComponent &mc) {
+          vertexCount += mc.mesh ? mc.mesh->vertexCount : 0;
+        });
+
+        ImGui::Text("Vertex Count: %i", vertexCount);
+        ImGui::Text("Entity Count: %i", world.entityCount());
+        ImGui::End();
+      },
+      UIMode::Both);
 
   mainLoop();
   renderer.cleanup();
@@ -147,52 +169,33 @@ void Application::mainLoop() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    topbar();
+    for (auto &cb : preTickUIs) {
+      if (cb.mode == UIMode::Both ||
+          (cb.mode == UIMode::Editor && editorMode) ||
+          (cb.mode == UIMode::Game && !editorMode))
+        cb.func();
+    }
 
     // run all update functions
     tick(deltaTime);
 
     renderer.recreateViewportIfNeeded();
 
-    {
-      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-      ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_NoBackground);
-      ImVec2 size = ImGui::GetContentRegionAvail();
-      if (size.x > 0 && size.y > 0) {
-        renderer.pendingViewportExtent = {static_cast<uint32_t>(size.x),
-                                          static_cast<uint32_t>(size.y)};
-        ImGui::Image(
-            reinterpret_cast<ImTextureID>(renderer.viewportDescriptorSet),
-            size);
-      }
-      ImGui::End();
-      ImGui::PopStyleVar();
+    if (!editorMode) {
+      renderer.pendingViewportExtent = renderer.swapChainExtent;
     }
 
-    {
-      ImGui::Begin("Debug", nullptr);
-      ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-      glm::vec3 position = cam->getPosition(*camTc);
-      ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y,
-                  position.z);
-
-      uint32_t vertexCount = 0;
-
-      Query<MeshComponent> meshQuery(world);
-      meshQuery.for_each([&](EntityId id, MeshComponent &mc) {
-        vertexCount += mc.mesh ? mc.mesh->vertexCount : 0;
-      });
-
-      ImGui::Text("Vertex Count: %i", vertexCount);
-      ImGui::Text("Entity Count: %i", world.entityCount());
-
-      ImGui::End();
+    for (auto &cb : postTickUIs) {
+      if (cb.mode == UIMode::Both ||
+          (cb.mode == UIMode::Editor && editorMode) ||
+          (cb.mode == UIMode::Game && !editorMode))
+        cb.func();
     }
+
+    ImGui::Render();
 
     renderer.framebufferResized = framebufferResized;
     framebufferResized = false;
-
-    ImGui::Render();
 
     renderer.drawFrame();
   }
@@ -201,45 +204,8 @@ void Application::mainLoop() {
 void Application::cleanup() {}
 
 void Application::processInput(float deltaTime) {
-  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-    mouseCaptured = !mouseCaptured;
-    if (mouseCaptured) {
-      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-      if (glfwRawMouseMotionSupported())
-        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
-      firstMouse = true;
-    } else {
-      glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-      if (glfwRawMouseMotionSupported())
-        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
-    }
-    while (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-      glfwPollEvents();
-  }
-
-  if (!glfwGetMouseButton(window, 1))
-    return;
-
-  glm::vec3 inputDir = glm::vec3(0.0);
-
-  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-    inputDir.z += 1.0;
-  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-    inputDir.z -= 1.0;
-
-  if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-    inputDir.y += 1.0;
-  if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
-    inputDir.y -= 1.0;
-
-  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-    inputDir.x -= 1.0;
-  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-    inputDir.x += 1.0;
-
-  auto *cam = world.get_storage<Camera>().get(cameraEntity);
-  auto *camTc = world.get_storage<TransformComponent>().get(cameraEntity);
-  cam->processKeyboard(*camTc, inputDir, deltaTime);
+  InputManager input = *world.get_resource<InputManager>();
+  input.update(window);
 }
 
 double Application::lastX = 0.0;

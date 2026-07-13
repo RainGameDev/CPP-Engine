@@ -276,7 +276,7 @@ void VulkanRenderingContext::createViewportResources(uint32_t width,
                            .layerCount = 1}};
   viewportDepthImageView = vk::raii::ImageView(device, depthViewInfo);
 
-  // Sampler for ImGui
+  // Sampler
   viewportSampler = vk::raii::Sampler(
       device, {.magFilter = vk::Filter::eLinear,
                .minFilter = vk::Filter::eLinear,
@@ -285,14 +285,16 @@ void VulkanRenderingContext::createViewportResources(uint32_t width,
                .addressModeV = vk::SamplerAddressMode::eClampToEdge,
                .addressModeW = vk::SamplerAddressMode::eClampToEdge});
 
-  // ImGui descriptor set (allocated from ImGui's internal pool, do not free manually)
-  viewportDescriptorSet = ImGui_ImplVulkan_AddTexture(
-      *viewportSampler, *viewportColorImageView,
-      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  // ImGui descriptor set (only needed in editor mode)
+  if (editorMode) {
+    viewportDescriptorSet = ImGui_ImplVulkan_AddTexture(
+        *viewportSampler, *viewportColorImageView,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  }
 }
 
 void VulkanRenderingContext::cleanupViewportResources() {
-  if (viewportDescriptorSet != VK_NULL_HANDLE) {
+  if (editorMode && viewportDescriptorSet != VK_NULL_HANDLE) {
     ImGui_ImplVulkan_RemoveTexture(viewportDescriptorSet);
     viewportDescriptorSet = VK_NULL_HANDLE;
   }

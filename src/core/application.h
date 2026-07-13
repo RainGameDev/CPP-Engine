@@ -10,6 +10,10 @@
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <functional>
+#include <vector>
+
+enum class UIMode { Editor, Game, Both };
 
 class Application {
 public:
@@ -17,6 +21,16 @@ public:
   void run();
 
   Application() { SystemRegistry::instance().apply_to(schedule); }
+
+  void setEditorMode(bool enabled) { editorMode = enabled; }
+
+  void addUI(std::function<void()> ui, UIMode mode = UIMode::Both) {
+    postTickUIs.push_back({std::move(ui), mode});
+  }
+
+  void addPreTickUI(std::function<void()> ui, UIMode mode = UIMode::Both) {
+    preTickUIs.push_back({std::move(ui), mode});
+  }
 
   template <typename F> Application &add_startup_system(F system) {
     schedule.add_system(Stage::Start, std::move(system));
@@ -46,6 +60,14 @@ private:
   static double lastX, lastY;
   static bool firstMouse;
   bool mouseCaptured = true;
+  bool editorMode = false;
+
+  struct UICallback {
+    std::function<void()> func;
+    UIMode mode;
+  };
+  std::vector<UICallback> preTickUIs;
+  std::vector<UICallback> postTickUIs;
 
   float fixedTimeStep = 1.0f / 60.0f; // the size of one physics step
   float fixedAccumulator = 0.0f;

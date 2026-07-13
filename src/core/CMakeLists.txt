@@ -23,7 +23,3 @@ target_link_libraries(core_lib PUBLIC
 )
 
 target_compile_definitions(core_lib PUBLIC VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1)
-
-target_include_directories(core_lib PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/editor
-)

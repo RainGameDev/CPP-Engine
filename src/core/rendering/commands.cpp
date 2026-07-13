@@ -29,7 +29,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
                                                  uint32_t currentFrame) {
   commandBuffer.begin({});
 
-  // --- Pass 1: Render 3D scene to viewport render target ---
+  // --- Pass 1: Render 3D scene ---
 
   transition_image_layout(*viewportColorImage, vk::ImageLayout::eUndefined,
                           vk::ImageLayout::eColorAttachmentOptimal, {},
@@ -181,42 +181,123 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
                           vk::PipelineStageFlagBits2::eColorAttachmentOutput,
                           vk::PipelineStageFlagBits2::eFragmentShader);
 
-  // --- Pass 2: Render ImGui to swapchain ---
+  // --- Pass 2: Copy viewport texture to swapchain ---
 
-  transition_image_layout(imageIndex, vk::ImageLayout::eUndefined,
-                          vk::ImageLayout::eColorAttachmentOptimal, {},
-                          vk::AccessFlagBits2::eColorAttachmentWrite,
-                          vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-                          vk::PipelineStageFlagBits2::eColorAttachmentOutput);
+  if (editorMode) {
+    transition_image_layout(imageIndex, vk::ImageLayout::eUndefined,
+                            vk::ImageLayout::eColorAttachmentOptimal, {},
+                            vk::AccessFlagBits2::eColorAttachmentWrite,
+                            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                            vk::PipelineStageFlagBits2::eColorAttachmentOutput);
 
-  vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
-  std::array<vk::ClearValue, 1> imguiClearValues = {clearColor};
+    vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+    std::array<vk::ClearValue, 1> imguiClearValues = {clearColor};
 
-  vk::RenderingAttachmentInfo imguiColorAttachment = {
-      .imageView = swapChainImageViews[imageIndex],
-      .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-      .loadOp = vk::AttachmentLoadOp::eClear,
-      .storeOp = vk::AttachmentStoreOp::eStore,
-      .clearValue = clearColor};
+    vk::RenderingAttachmentInfo imguiColorAttachment = {
+        .imageView = swapChainImageViews[imageIndex],
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = clearColor};
 
-  vk::RenderingInfo imguiRenderingInfo = {
-      .renderArea = {.offset = {0, 0}, .extent = swapChainExtent},
-      .layerCount = 1,
-      .colorAttachmentCount = 1,
-      .pColorAttachments = &imguiColorAttachment};
+    vk::RenderingInfo imguiRenderingInfo = {
+        .renderArea = {.offset = {0, 0}, .extent = swapChainExtent},
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &imguiColorAttachment};
 
-  commandBuffer.beginRendering(imguiRenderingInfo);
+    commandBuffer.beginRendering(imguiRenderingInfo);
 
-  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer,
-                                  VK_NULL_HANDLE);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer,
+                                    VK_NULL_HANDLE);
 
-  commandBuffer.endRendering();
+    commandBuffer.endRendering();
 
-  transition_image_layout(imageIndex, vk::ImageLayout::eColorAttachmentOptimal,
-                          vk::ImageLayout::ePresentSrcKHR,
-                          vk::AccessFlagBits2::eColorAttachmentWrite, {},
-                          vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-                          vk::PipelineStageFlagBits2::eBottomOfPipe);
+    transition_image_layout(
+        imageIndex, vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::ePresentSrcKHR,
+        vk::AccessFlagBits2::eColorAttachmentWrite, {},
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eBottomOfPipe);
+  } else {
+    transition_image_layout(*viewportColorImage,
+                            vk::ImageLayout::eShaderReadOnlyOptimal,
+                            vk::ImageLayout::eTransferSrcOptimal,
+                            vk::AccessFlagBits2::eShaderRead,
+                            vk::AccessFlagBits2::eTransferRead,
+                            vk::PipelineStageFlagBits2::eFragmentShader,
+                            vk::PipelineStageFlagBits2::eTransfer);
+
+    transition_image_layout(imageIndex, vk::ImageLayout::eUndefined,
+                            vk::ImageLayout::eTransferDstOptimal, {},
+                            vk::AccessFlagBits2::eTransferWrite,
+                            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                            vk::PipelineStageFlagBits2::eTransfer);
+
+    std::array<vk::Offset3D, 2> srcOffsets = {
+        vk::Offset3D{0, 0, 0},
+        vk::Offset3D{static_cast<int32_t>(viewportExtent.width),
+                     static_cast<int32_t>(viewportExtent.height), 1}};
+    std::array<vk::Offset3D, 2> dstOffsets = {
+        vk::Offset3D{0, 0, 0},
+        vk::Offset3D{static_cast<int32_t>(swapChainExtent.width),
+                     static_cast<int32_t>(swapChainExtent.height), 1}};
+
+    vk::ImageBlit blitRegion = {
+        .srcSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .mipLevel = 0,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1},
+        .srcOffsets = srcOffsets,
+        .dstSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .mipLevel = 0,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1},
+        .dstOffsets = dstOffsets};
+
+    commandBuffer.blitImage(*viewportColorImage,
+                            vk::ImageLayout::eTransferSrcOptimal,
+                            swapChainImages[imageIndex],
+                            vk::ImageLayout::eTransferDstOptimal, blitRegion,
+                            vk::Filter::eLinear);
+
+    transition_image_layout(imageIndex, vk::ImageLayout::eTransferDstOptimal,
+                            vk::ImageLayout::eColorAttachmentOptimal,
+                            vk::AccessFlagBits2::eTransferWrite,
+                            vk::AccessFlagBits2::eColorAttachmentWrite,
+                            vk::PipelineStageFlagBits2::eTransfer,
+                            vk::PipelineStageFlagBits2::eColorAttachmentOutput);
+
+    vk::ClearValue clearColor = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 0.0f);
+    std::array<vk::ClearValue, 1> imguiClearValues = {clearColor};
+
+    vk::RenderingAttachmentInfo imguiColorAttachment = {
+        .imageView = swapChainImageViews[imageIndex],
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eLoad,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = clearColor};
+
+    vk::RenderingInfo imguiRenderingInfo = {
+        .renderArea = {.offset = {0, 0}, .extent = swapChainExtent},
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &imguiColorAttachment};
+
+    commandBuffer.beginRendering(imguiRenderingInfo);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer,
+                                    VK_NULL_HANDLE);
+
+    commandBuffer.endRendering();
+
+    transition_image_layout(
+        imageIndex, vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageLayout::ePresentSrcKHR,
+        vk::AccessFlagBits2::eColorAttachmentWrite, {},
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits2::eBottomOfPipe);
+  }
 
   commandBuffer.end();
 }

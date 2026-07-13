@@ -109,6 +109,7 @@ public:
 
   uint32_t currentFrame = 0;
 
+  bool editorMode = false;
   World *world = nullptr;
 
   // Vulkan setup
