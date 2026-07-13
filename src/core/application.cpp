@@ -4,10 +4,7 @@
 #include "assets/model_loader.h"
 #include "ecs/components.h"
 #include "ecs/input_manager.h"
-#include "ecs/light.h"
-#include "ecs/query.h"
 #include "ecs/world.h"
-#include "glm/ext/vector_float3.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -23,17 +20,13 @@ void Application::run() {
 
   window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
   glfwSetWindowUserPointer(window, this);
-  glfwSetCursorPosCallback(window, mouse_callback);
   glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
   glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
   if (glfwRawMouseMotionSupported())
     glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
 
-  firstMouse = true;
-
   glfwSetWindowUserPointer(window, this);
-  glfwSetCursorPosCallback(window, mouse_callback);
 
   world.add_resource<AssetManager>();
   AssetManager &assetManager = *world.get_resource<AssetManager>();
@@ -41,6 +34,16 @@ void Application::run() {
   renderer.editorMode = editorMode;
   renderer.init(window, world);
   world.add_resource<VulkanRenderingContext *>(&renderer);
+
+  world.add_resource<InputManager>();
+  auto *inputManager = world.get_resource<InputManager>();
+  inputManager->window = window;
+  inputManager->addKeybind({GLFW_KEY_W, GLFW_REPEAT}, "move_forward");
+  inputManager->addKeybind({GLFW_KEY_S, GLFW_REPEAT}, "move_backward");
+  inputManager->addKeybind({GLFW_KEY_A, GLFW_REPEAT}, "move_left");
+  inputManager->addKeybind({GLFW_KEY_D, GLFW_REPEAT}, "move_right");
+  inputManager->addKeybind({GLFW_KEY_SPACE, GLFW_REPEAT}, "move_up");
+  inputManager->addKeybind({GLFW_KEY_LEFT_SHIFT, GLFW_REPEAT}, "move_down");
   assetManager.addLoader(std::make_unique<ShaderLoader>(renderer.device));
   assetManager.loadDirectory("assets/shaders");
   assetManager.addLoader(std::make_unique<TextureLoader>(
@@ -57,62 +60,7 @@ void Application::run() {
       renderer.queue, assetManager));
   assetManager.loadDirectory("assets/models");
 
-  auto *models = assetManager.getLoader<MeshAsset>();
-  auto meshEntity = world.create_entity();
-  world.add_component(
-      meshEntity, MeshComponent{.mesh = std::make_shared<Mesh>(
-                                    std::move(models->getAsset("mesh").mesh))});
-  world.add_component(meshEntity, TransformComponent{});
-
-  cameraEntity = world.create_entity();
-  world.get_storage<NameComponent>().get(cameraEntity)->setName("Camera");
-  world.add_component(cameraEntity, Camera{});
-  world.add_component(cameraEntity, TransformComponent{
-                                        .position = {0.0f, 0.0f, -3.0f},
-                                        .rotation = {-90.0f, 0.0f, 0.0f},
-                                    });
-
-  lightEntity = world.create_entity();
-  world.get_storage<NameComponent>().get(lightEntity)->setName("Light");
-  world.add_component(lightEntity,
-                      LightComponent{.lightType = Directional{},
-                                     .intensity = 1.0f,
-                                     .color = glm::vec3(1.0, 0.0, 0.0),
-                                     .isEmitting = true});
-  world.add_component(lightEntity,
-                      TransformComponent{.position = {5.0f, 1.0f, 5.0f}});
-
-  debugIndicatorEntity = world.create_entity();
-  world.get_storage<NameComponent>()
-      .get(debugIndicatorEntity)
-      ->setName("Debug Indicator");
-  auto indicatorMesh = renderer.createIndicatorMesh();
-  world.add_component(debugIndicatorEntity,
-                      MeshComponent{.mesh = indicatorMesh});
-  world.add_component(debugIndicatorEntity, TransformComponent{});
-
-  addUI(
-      [this]() {
-        ImGui::Begin("Debug", nullptr);
-        ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-
-        auto *cam = world.get_storage<Camera>().get(cameraEntity);
-        auto *camTc = world.get_storage<TransformComponent>().get(cameraEntity);
-        glm::vec3 position = cam->getPosition(*camTc);
-        ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y,
-                    position.z);
-
-        uint32_t vertexCount = 0;
-        Query<MeshComponent> meshQuery(world);
-        meshQuery.for_each([&](EntityId id, MeshComponent &mc) {
-          vertexCount += mc.mesh ? mc.mesh->vertexCount : 0;
-        });
-
-        ImGui::Text("Vertex Count: %i", vertexCount);
-        ImGui::Text("Entity Count: %i", world.entityCount());
-        ImGui::End();
-      },
-      UIMode::Both);
+  schedule.run(Stage::Start, world);
 
   mainLoop();
   renderer.cleanup();
@@ -139,9 +87,12 @@ void Application::mainLoop() {
     glfwPollEvents();
     processInput(deltaTime);
 
-    auto *cam = world.get_storage<Camera>().get(cameraEntity);
-    auto *camTc = world.get_storage<TransformComponent>().get(cameraEntity);
-    cam->updateCameraVectors(*camTc);
+    auto &camStorage = world.get_storage<Camera>();
+    if (camStorage.size() == 0)
+      continue;
+    EntityId camId = camStorage.entity_at(0);
+    auto *cam = camStorage.get(camId);
+    auto *camTc = world.get_storage<TransformComponent>().get(camId);
 
     UniformBufferObject ubo{};
     ubo.view = cam->getViewMatrix(*camTc);
@@ -151,19 +102,6 @@ void Application::mainLoop() {
     ubo.proj[1][1] *= -1;
 
     renderer.updateUniformBuffer(renderer.currentFrame, ubo);
-
-    // Sync debug indicator to light
-    auto *lightTc = world.get_storage<TransformComponent>().get(lightEntity);
-    auto *lightLc = world.get_storage<LightComponent>().get(lightEntity);
-    auto *indTc =
-        world.get_storage<TransformComponent>().get(debugIndicatorEntity);
-    auto *indMc = world.get_storage<MeshComponent>().get(debugIndicatorEntity);
-    if (lightTc && lightLc && indTc && indMc) {
-      indTc->position = lightTc->position;
-      indTc->rotation = lightTc->rotation;
-      indTc->scale = glm::vec3(0.15f);
-      indMc->overrideColor = glm::vec4(lightLc->color, 1.0f);
-    }
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -204,33 +142,24 @@ void Application::mainLoop() {
 void Application::cleanup() {}
 
 void Application::processInput(float deltaTime) {
-  InputManager input = *world.get_resource<InputManager>();
-  input.update(window);
-}
+  auto *input = world.get_resource<InputManager>();
+  input->update();
 
-double Application::lastX = 0.0;
-double Application::lastY = 0.0;
-bool Application::firstMouse = true;
-
-void Application::mouse_callback(GLFWwindow *window, double xpos, double ypos) {
-  auto *app = static_cast<Application *>(glfwGetWindowUserPointer(window));
-
-  if (!app->mouseCaptured)
+  auto &camStorage = world.get_storage<Camera>();
+  if (camStorage.size() == 0)
     return;
+  EntityId camId = camStorage.entity_at(0);
+  auto *cam = camStorage.get(camId);
+  auto *camTc = world.get_storage<TransformComponent>().get(camId);
 
-  if (firstMouse) {
-    lastX = xpos;
-    lastY = ypos;
-    firstMouse = false;
+  if (mouseCaptured && cam && camTc) {
+    cam->processMouseMovement(*camTc, input->mouseDeltaX, input->mouseDeltaY);
   }
 
-  double deltaX = xpos - lastX;
-  double deltaY = lastY - ypos;
-  lastX = xpos;
-  lastY = ypos;
+  glm::vec3 direction =
+      input->inputVec3("move_right", "move_left", "move_up", "move_down",
+                       "move_forward", "move_backward");
 
-  auto *cam = app->world.get_storage<Camera>().get(app->cameraEntity);
-  auto *camTc =
-      app->world.get_storage<TransformComponent>().get(app->cameraEntity);
-  cam->processMouseMovement(*camTc, deltaX, deltaY);
+  if (direction != glm::vec3(0.0f) && cam && camTc)
+    cam->processKeyboard(*camTc, direction, deltaTime);
 }

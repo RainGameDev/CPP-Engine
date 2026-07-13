@@ -1,3 +1,5 @@
+#include "glm/ext/vector_float2.hpp"
+#include "glm/ext/vector_float3.hpp"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cstdint>
@@ -36,7 +38,10 @@ public:
   std::unordered_map<uint32_t, bool> prevMouseState;
 
   double mouseX = 0.0, mouseY = 0.0;
+  double prevMouseX = 0.0, prevMouseY = 0.0;
+  double mouseDeltaX = 0.0, mouseDeltaY = 0.0;
   double scrollX = 0.0, scrollY = 0.0;
+  bool firstMouse = true;
 
   /// Binds a keybind
   void addKeybind(Keybinding keybind, std::string name) {
@@ -92,6 +97,15 @@ public:
     }
 
     glfwGetCursorPos(window, &mouseX, &mouseY);
+    if (firstMouse) {
+      prevMouseX = mouseX;
+      prevMouseY = mouseY;
+      firstMouse = false;
+    }
+    mouseDeltaX = mouseX - prevMouseX;
+    mouseDeltaY = prevMouseY - mouseY;
+    prevMouseX = mouseX;
+    prevMouseY = mouseY;
   }
 
   /// Is keybind[name] active?
@@ -119,5 +133,61 @@ public:
              releasedList.end();
     }
     return false;
+  }
+
+  glm::vec2 inputVec2(std::string xPos, std::string xNeg, std::string yPos,
+                      std::string yNeg) {
+
+    glm::vec2 input = glm::vec2(0, 0);
+
+    if (isKeybindActive(xPos)) {
+      input.x = 1.0;
+    } else if (isKeybindActive(xNeg)) {
+      input.x = -1.0;
+    } else {
+      input.x = 0.0;
+    }
+
+    if (isKeybindActive(yPos)) {
+      input.y = 1.0;
+    } else if (isKeybindActive(yNeg)) {
+      input.y = -1.0;
+    } else {
+      input.y = 0.0;
+    }
+
+    return input;
+  }
+
+  glm::vec3 inputVec3(std::string xPos, std::string xNeg, std::string yPos,
+                      std::string yNeg, std::string zPos, std::string zNeg) {
+
+    glm::vec3 input = glm::vec3(0, 0, 0);
+
+    if (isKeybindActive(xPos)) {
+      input.x = 1.0;
+    } else if (isKeybindActive(xNeg)) {
+      input.x = -1.0;
+    } else {
+      input.x = 0.0;
+    }
+
+    if (isKeybindActive(yPos)) {
+      input.y = 1.0;
+    } else if (isKeybindActive(yNeg)) {
+      input.y = -1.0;
+    } else {
+      input.y = 0.0;
+    }
+
+    if (isKeybindActive(zPos)) {
+      input.z = 1.0;
+    } else if (isKeybindActive(zNeg)) {
+      input.z = -1.0;
+    } else {
+      input.z = 0.0;
+    }
+
+    return input;
   }
 };

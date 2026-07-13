@@ -24,6 +24,8 @@ public:
 
   void setEditorMode(bool enabled) { editorMode = enabled; }
 
+  World &getWorld() { return world; }
+
   void addUI(std::function<void()> ui, UIMode mode = UIMode::Both) {
     postTickUIs.push_back({std::move(ui), mode});
   }
@@ -53,12 +55,7 @@ private:
   World world;
 
   Schedule schedule;
-  EntityId cameraEntity;
-  EntityId lightEntity;
-  EntityId debugIndicatorEntity;
 
-  static double lastX, lastY;
-  static bool firstMouse;
   bool mouseCaptured = true;
   bool editorMode = false;
 
@@ -78,7 +75,6 @@ private:
   void tick(float deltaTime);
 
   void processInput(float deltaTime);
-  static void mouse_callback(GLFWwindow *window, double xpos, double ypos);
 };
 
 static void framebufferResizeCallback(GLFWwindow *window, int width,
