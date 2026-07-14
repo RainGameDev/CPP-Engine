@@ -186,40 +186,72 @@ void assets(World &world) {
   }
   ImGui::Separator();
   for (auto &entry : allAssets) {
+    if (editorState.selectedAssetLoader != nullptr &&
+        entry.loaderFrom != editorState.selectedAssetLoader)
+      continue;
+
     float windowVisibleX2 =
         ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
     bool isSelected = (editorState.selectedAsset == entry.name);
     ImVec2 startPos = ImGui::GetCursorScreenPos();
-    ImVec2 groupSize(128, 128 + ImGui::GetTextLineHeightWithSpacing());
+    float textWidth = ImGui::CalcTextSize(entry.name.c_str()).x;
+    int textLines = std::max(1, (int)std::ceil(textWidth / 128.0f));
+    float textHeight = textLines * ImGui::GetTextLineHeightWithSpacing();
+    ImVec2 groupSize(128, 128 + textHeight);
 
-    if (editorState.selectedAssetLoader == nullptr) {
-    } else {
+    if (editorState.assetSearch != "" &&
+        !entry.name.contains(editorState.assetSearch)) {
+      continue;
+    }
 
-      if (auto *texLoader =
-              dynamic_cast<const TextureLoader *>(entry.loaderFrom)) {
-        const TextureAsset &asset = texLoader->getAsset(entry.name);
-        if (!asset.imguiDS)
-          continue;
-        if (editorState.assetSearch != "" &&
-            !entry.name.contains(editorState.assetSearch)) {
-          continue;
-        }
+    if (auto *texLoader =
+            dynamic_cast<const TextureLoader *>(entry.loaderFrom)) {
+      const TextureAsset &asset = texLoader->getAsset(entry.name);
+      if (!asset.imguiDS)
+        continue;
 
-        ImGui::PushID(entry.name.c_str());
+      ImGui::PushID(entry.name.c_str());
 
-        if (ImGui::Selectable("##sel", isSelected, ImGuiSelectableFlags_None,
-                              groupSize)) {
-          editorState.selectedAsset = entry.name;
-        }
-
-        ImGui::SetCursorScreenPos(startPos);
-        ImGui::BeginGroup();
-        ImGui::Image((ImTextureID)asset.imguiDS, ImVec2(128, 128));
-        ImGui::TextWrapped("%s", entry.name.c_str());
-        ImGui::EndGroup();
-
-        ImGui::PopID();
+      if (ImGui::Selectable("##sel", isSelected, ImGuiSelectableFlags_None,
+                            groupSize)) {
+        editorState.selectedAsset = entry.name;
       }
+
+      ImGui::SetCursorScreenPos(startPos);
+      ImGui::BeginGroup();
+      ImGui::Image((ImTextureID)asset.imguiDS, ImVec2(128, 128));
+      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 128);
+      ImGui::TextWrapped("%s", entry.name.c_str());
+      ImGui::PopTextWrapPos();
+      ImGui::EndGroup();
+
+      ImGui::PopID();
+    } else if (dynamic_cast<const ShaderLoader *>(entry.loaderFrom)) {
+      ImGui::PushID(entry.name.c_str());
+
+      if (ImGui::Selectable("##sel", isSelected, ImGuiSelectableFlags_None,
+                            groupSize)) {
+        editorState.selectedAsset = entry.name;
+      }
+
+      ImGui::SetCursorScreenPos(startPos);
+      ImGui::BeginGroup();
+      ImVec2 iconMin = ImGui::GetCursorScreenPos();
+      ImVec2 iconMax(iconMin.x + 128, iconMin.y + 128);
+      ImDrawList *drawList = ImGui::GetWindowDrawList();
+      drawList->AddRectFilled(iconMin, iconMax, IM_COL32(80, 60, 140, 255),
+                              4.0f);
+      ImVec2 textSize = ImGui::CalcTextSize("S");
+      ImVec2 textPos(iconMin.x + (128 - textSize.x) * 0.5f,
+                     iconMin.y + (128 - textSize.y) * 0.5f);
+      drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), "S");
+      ImGui::Dummy(ImVec2(128, 128));
+      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 128);
+      ImGui::TextWrapped("%s", entry.name.c_str());
+      ImGui::PopTextWrapPos();
+      ImGui::EndGroup();
+
+      ImGui::PopID();
     }
     float lastItemX2 = ImGui::GetItemRectMax().x;
     float nextItemX2 = lastItemX2 + ImGui::GetStyle().ItemSpacing.x + 128.0f;
