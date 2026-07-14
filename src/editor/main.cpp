@@ -8,8 +8,11 @@
 #include "ecs/world.h"
 #include "rendering/camera.h"
 #include "rendering/vulkan_render_context.h"
+#include "ui/editor.h"
 
 #include "imgui.h"
+#include "ui/editor.h"
+#include <GLFW/glfw3.h>
 #include <cstdlib>
 #include <exception>
 #include <glm/ext/vector_float3.hpp>
@@ -24,7 +27,7 @@ void editorStartup(World &world) {
   auto meshEntity = world.create_entity();
   world.add_component(
       meshEntity, MeshComponent{.mesh = std::make_shared<Mesh>(
-                                     std::move(models->getAsset("mesh").mesh))});
+                                    std::move(models->getAsset("mesh").mesh))});
   world.add_component(meshEntity, TransformComponent{});
 
   auto cameraEntity = world.create_entity();
@@ -54,8 +57,8 @@ void editorStartup(World &world) {
                       MeshComponent{.mesh = indicatorMesh});
   world.add_component(debugIndicatorEntity, TransformComponent{});
 
-  // Sync debug indicator to light each frame
   world.add_resource<bool>(false);
+  world.add_resource<EditorStatus>();
 }
 
 void debugUI(World &world) {
@@ -115,6 +118,47 @@ void lightDebugSync(World &world) {
   }
 }
 UPDATE_SYSTEM(lightDebugSync);
+
+void editorCameraUpdate(World &world) {
+  auto *input = world.get_resource<InputManager>();
+  auto *window = world.get_resource<GLFWwindow *>();
+  auto *dt = world.get_resource<DeltaTime>();
+  auto *status = world.get_resource<EditorStatus>();
+  if (!input || !window || !dt)
+    return;
+
+  static bool captured = false;
+  bool wantCapture = input->isKeybindActive("camera_hold");
+
+  if (wantCapture != captured) {
+    captured = wantCapture;
+    glfwSetInputMode(*window, GLFW_CURSOR,
+                     captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+  }
+
+  auto &camStorage = world.get_storage<Camera>();
+  if (camStorage.size() == 0)
+    return;
+  EntityId camId = camStorage.entity_at(0);
+  auto *cam = camStorage.get(camId);
+  auto *camTc = world.get_storage<TransformComponent>().get(camId);
+  if (!cam || !camTc)
+    return;
+
+  if (captured)
+    cam->processMouseMovement(*camTc, input->mouseDeltaX, input->mouseDeltaY);
+
+  if (!captured)
+    return;
+
+  glm::vec3 direction =
+      input->inputVec3("move_right", "move_left", "move_up", "move_down",
+                       "move_forward", "move_backward");
+
+  if (direction != glm::vec3(0.0f))
+    cam->processKeyboard(*camTc, direction, dt->value);
+}
+UPDATE_SYSTEM(editorCameraUpdate);
 
 int main() {
   try {

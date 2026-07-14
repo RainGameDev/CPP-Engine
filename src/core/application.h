@@ -56,7 +56,6 @@ private:
 
   Schedule schedule;
 
-  bool mouseCaptured = true;
   bool editorMode = false;
 
   struct UICallback {

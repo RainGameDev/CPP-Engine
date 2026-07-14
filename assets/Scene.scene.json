@@ -1,0 +1,134 @@
+{
+  "entities": [
+    {
+      "components": {
+        "MeshComponent": {
+          "overrideColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "NameComponent": {
+          "name": "Entity"
+        },
+        "TransformComponent": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": 0
+    },
+    {
+      "components": {
+        "Camera": {
+          "fov": 90.0
+        },
+        "NameComponent": {
+          "name": "Camera"
+        },
+        "TransformComponent": {
+          "position": [
+            0.0,
+            0.0,
+            -3.0
+          ],
+          "rotation": [
+            -90.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": 1
+    },
+    {
+      "components": {
+        "LightComponent": {
+          "color": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "intensity": 1.0,
+          "isEmitting": true,
+          "lightType": 2
+        },
+        "NameComponent": {
+          "name": "Light"
+        },
+        "TransformComponent": {
+          "position": [
+            5.0,
+            1.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "id": 2
+    },
+    {
+      "components": {
+        "MeshComponent": {
+          "overrideColor": [
+            1.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "NameComponent": {
+          "name": "Debug Indicator"
+        },
+        "TransformComponent": {
+          "position": [
+            5.0,
+            1.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            0.15000000596046448,
+            0.15000000596046448,
+            0.15000000596046448
+          ]
+        }
+      },
+      "id": 3
+    }
+  ],
+  "scene_name": "Scene"
+}

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "asset_loader.h"
+#include "imgui_impl_vulkan.h"
 #include "vulkan/vulkan.hpp"
 #include <stb_image.h>
 #include <vulkan/vulkan.hpp>
@@ -91,6 +92,7 @@ struct TextureAsset {
   vk::raii::ImageView imageView = nullptr;
   vk::raii::DeviceMemory memory = nullptr;
   vk::raii::Sampler sampler = nullptr;
+  VkDescriptorSet imguiDS = VK_NULL_HANDLE;
 };
 
 class TextureLoader : public AssetLoader<TextureAsset> {
@@ -335,6 +337,10 @@ public:
         createImageView(image, vk::Format::eR8G8B8A8Srgb);
     vk::raii::Sampler sampler = createSampler(mipLevels);
 
+    auto imguiDS = ImGui_ImplVulkan_AddTexture(
+        static_cast<VkSampler>(*sampler), static_cast<VkImageView>(*imageView),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
     return {static_cast<uint32_t>(w),
             static_cast<uint32_t>(h),
             mipLevels,
@@ -342,7 +348,10 @@ public:
             std::move(image),
             std::move(imageView),
             std::move(imageMemory),
-            std::move(sampler)};
+            std::move(sampler),
+            std::move(imguiDS)
+
+    };
   }
 
 private:
@@ -532,6 +541,10 @@ private:
     vk::raii::ImageView imageView = createImageView(image, format);
     vk::raii::Sampler sampler = createSampler(mipLevels);
 
+    auto imguiDS = ImGui_ImplVulkan_AddTexture(
+        static_cast<VkSampler>(*sampler), static_cast<VkImageView>(*imageView),
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
     return {width,
             height,
             mipLevels,
@@ -539,7 +552,9 @@ private:
             std::move(image),
             std::move(imageView),
             std::move(imageMemory),
-            std::move(sampler)};
+            std::move(sampler),
+
+            std::move(imguiDS)};
   }
   uint32_t findMemoryType(uint32_t typeFilter,
                           vk::MemoryPropertyFlags properties) {

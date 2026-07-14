@@ -3,16 +3,18 @@
 #include "component.h"
 #include "components.h"
 #include "entity.h"
+#include "scene.h"
 #include <any>
 #include <cstdint>
 #include <memory>
 #include <typeindex>
 #include <unordered_map>
+#include <vector>
 
 class World {
 public:
   EntityId create_entity() {
-    auto id = nextID++;
+    auto id = currentScene.nextID++;
     add_component(id, NameComponent{});
     return id;
   }
@@ -54,28 +56,36 @@ public:
 
   template <ComponentType T> ComponentStorage<T> &get_storage() {
     auto key = std::type_index(typeid(T));
-    auto it = storages.find(key);
-    if (it == storages.end()) {
+    auto it = currentScene.storages.find(key);
+    if (it == currentScene.storages.end()) {
       auto storage = std::make_unique<ComponentStorage<T>>();
       auto *raw = storage.get();
-      storages.emplace(key, std::move(storage));
+      currentScene.storages.emplace(key, std::move(storage));
       return *raw;
     }
     return *static_cast<ComponentStorage<T> *>(it->second.get());
   }
 
-  uint32_t entityCount() { return nextID - 1; }
+  uint32_t entityCount() { return currentScene.nextID - 1; }
+
+  std::vector<EntityId> entities() {
+    auto &storage = get_storage<NameComponent>();
+    std::vector<EntityId> ids;
+    ids.reserve(storage.size());
+    for (std::size_t i = 0; i < storage.size(); ++i)
+      ids.push_back(storage.entity_at(i));
+    return ids;
+  }
 
   void inspect_entity(EntityId id) {
-    for (auto &[_, storage] : storages) {
+    for (auto &[_, storage] : currentScene.storages) {
       if (storage->contains(id))
         storage->inspect(id);
     }
   }
 
+  Scene currentScene;
+
 private:
-  EntityId nextID = 0;
   std::unordered_map<std::type_index, std::any> resources;
-  std::unordered_map<std::type_index, std::unique_ptr<IComponentStorage>>
-      storages;
 };

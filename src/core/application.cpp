@@ -21,13 +21,14 @@ void Application::run() {
   window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
   glfwSetWindowUserPointer(window, this);
   glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
   if (glfwRawMouseMotionSupported())
     glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
 
   glfwSetWindowUserPointer(window, this);
 
+  world.add_resource<GLFWwindow *>(window);
+  world.add_resource<DeltaTime>();
   world.add_resource<AssetManager>();
   AssetManager &assetManager = *world.get_resource<AssetManager>();
 
@@ -44,6 +45,7 @@ void Application::run() {
   inputManager->addKeybind({GLFW_KEY_D, GLFW_REPEAT}, "move_right");
   inputManager->addKeybind({GLFW_KEY_SPACE, GLFW_REPEAT}, "move_up");
   inputManager->addKeybind({GLFW_KEY_LEFT_SHIFT, GLFW_REPEAT}, "move_down");
+  inputManager->addKeybind({GLFW_MOUSE_BUTTON_RIGHT, GLFW_REPEAT, InputDevice::Mouse}, "camera_hold");
   assetManager.addLoader(std::make_unique<ShaderLoader>(renderer.device));
   assetManager.loadDirectory("assets/shaders");
   assetManager.addLoader(std::make_unique<TextureLoader>(
@@ -114,14 +116,17 @@ void Application::mainLoop() {
         cb.func();
     }
 
-    // run all update functions
-    tick(deltaTime);
-
+    // Recreate viewport resources before ticking so that ImGui::Image()
+    // uses a descriptor set that won't be destroyed later in the same frame.
     renderer.recreateViewportIfNeeded();
 
     if (!editorMode) {
       renderer.pendingViewportExtent = renderer.swapChainExtent;
     }
+
+    // run all update functions
+    *world.get_resource<DeltaTime>() = DeltaTime{deltaTime};
+    tick(deltaTime);
 
     for (auto &cb : postTickUIs) {
       if (cb.mode == UIMode::Both ||
@@ -144,22 +149,4 @@ void Application::cleanup() {}
 void Application::processInput(float deltaTime) {
   auto *input = world.get_resource<InputManager>();
   input->update();
-
-  auto &camStorage = world.get_storage<Camera>();
-  if (camStorage.size() == 0)
-    return;
-  EntityId camId = camStorage.entity_at(0);
-  auto *cam = camStorage.get(camId);
-  auto *camTc = world.get_storage<TransformComponent>().get(camId);
-
-  if (mouseCaptured && cam && camTc) {
-    cam->processMouseMovement(*camTc, input->mouseDeltaX, input->mouseDeltaY);
-  }
-
-  glm::vec3 direction =
-      input->inputVec3("move_right", "move_left", "move_up", "move_down",
-                       "move_forward", "move_backward");
-
-  if (direction != glm::vec3(0.0f) && cam && camTc)
-    cam->processKeyboard(*camTc, direction, deltaTime);
 }

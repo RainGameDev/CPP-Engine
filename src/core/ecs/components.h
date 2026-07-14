@@ -45,3 +45,7 @@ struct TransformComponent : Component<TransformComponent> {
     ImGui::DragFloat3("Scale", &scale.x, 0.1f);
   }
 };
+
+struct DeltaTime {
+  float value{0.0f};
+};

@@ -5,19 +5,23 @@
 #include <stdexcept>
 
 void VulkanRenderingContext::createSyncObjects() {
-  uint32_t count = static_cast<uint32_t>(swapChainImages.size());
   presentCompleteSemaphores.clear();
   renderFinishedSemaphores.clear();
-  for (uint32_t i = 0; i < count; i++) {
+  inFlightFences.clear();
+  uint32_t imageCount = static_cast<uint32_t>(swapChainImages.size());
+  for (uint32_t i = 0; i < imageCount; i++) {
     presentCompleteSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
     renderFinishedSemaphores.emplace_back(device, vk::SemaphoreCreateInfo());
   }
-  drawFence =
-      vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled});
+  for (uint32_t i = 0; i < maxConcurrentFrames; i++) {
+    inFlightFences.push_back(
+        vk::raii::Fence(device, {.flags = vk::FenceCreateFlagBits::eSignaled}));
+  }
 }
 
 void VulkanRenderingContext::drawFrame() {
-  auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
+  auto fenceResult = device.waitForFences(*inFlightFences[currentFrame],
+                                          vk::True, UINT64_MAX);
   if (fenceResult != vk::Result::eSuccess) {
     throw std::runtime_error("failed to wait for fence!");
   }
@@ -34,7 +38,7 @@ void VulkanRenderingContext::drawFrame() {
     return;
   }
 
-  device.resetFences(*drawFence);
+  device.resetFences(*inFlightFences[currentFrame]);
 
   recordCommandBuffer(imageIndex, currentFrame % maxConcurrentFrames);
 
@@ -47,12 +51,12 @@ void VulkanRenderingContext::drawFrame() {
       .commandBufferCount = 1,
       .pCommandBuffers = &*commandBuffer,
       .signalSemaphoreCount = 1,
-      .pSignalSemaphores = &*renderFinishedSemaphores[currentFrame]};
-  queue.submit(submitInfo, *drawFence);
+      .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]};
+  queue.submit(submitInfo, *inFlightFences[currentFrame]);
 
   const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
                                           .pWaitSemaphores =
-                                              &*renderFinishedSemaphores[currentFrame],
+                                              &*renderFinishedSemaphores[imageIndex],
                                           .swapchainCount = 1,
                                           .pSwapchains = &*swapChain,
                                           .pImageIndices = &imageIndex};

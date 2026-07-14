@@ -11,6 +11,7 @@ public:
 
   struct AssetEntry {
     std::string name;
+    const IAssetLoader *loaderFrom;
   };
 
   virtual std::vector<AssetEntry> getAllAssetEntries() const = 0;
@@ -34,8 +35,19 @@ public:
   /// Gets asset by name (e.g. "sdr_default_model.vert.spv")
   AssetType &getAsset(const std::string &name) { return assets[name]; }
 
+  /// Gets asset by name (const)
+  const AssetType &getAsset(const std::string &name) const {
+    return assets.at(name);
+  }
+
   /// Gets asset by name, returns nullptr if not found
   AssetType *tryGetAsset(const std::string &name) {
+    auto it = assets.find(name);
+    return it != assets.end() ? &it->second : nullptr;
+  }
+
+  /// Gets asset by name, returns nullptr if not found (const)
+  const AssetType *tryGetAsset(const std::string &name) const {
     auto it = assets.find(name);
     return it != assets.end() ? &it->second : nullptr;
   }
@@ -44,7 +56,7 @@ public:
     std::vector<AssetEntry> entries;
     entries.reserve(assets.size());
     for (const auto &[name, _] : assets)
-      entries.push_back({name});
+      entries.push_back({name, this});
     return entries;
   }
 

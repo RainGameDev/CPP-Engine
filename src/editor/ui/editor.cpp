@@ -1,27 +1,27 @@
-
+#include "ui/editor.h"
 #include "assets/asset_manager.h"
 #include "assets/material_loader.h"
 #include "assets/model_loader.h"
 #include "assets/shader_loader.h"
+#include "assets/texture_loader.h"
 #include "ecs/components.h"
 #include "ecs/entity.h"
-#include "ecs/light.h"
+#include "ecs/input_manager.h"
 #include "ecs/query.h"
+#include "ecs/serialize.h"
 #include "ecs/system_registry.h"
 #include "ecs/world.h"
+#include "imgui_impl_vulkan.h"
 #include "rendering/vulkan_render_context.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <print>
 #include <string>
-
-struct EditorStatus {
-  EntityId selectedID;
-  IAssetLoader *selectedAssetLoader = nullptr;
-  bool isViewportHovered = false;
-};
 
 void topbar(World &world) {
   ImGuiViewport *mainViewport = ImGui::GetMainViewport();
@@ -43,16 +43,29 @@ void topbar(World &world) {
 
   if (ImGui::BeginMenuBar()) {
     if (ImGui::BeginMenu("File")) {
-      if (ImGui::MenuItem("New")) { /* ... */ }
-      if (ImGui::MenuItem("Open...")) { /* ... */ }
-      if (ImGui::MenuItem("Save")) { /* ... */ }
+      if (ImGui::MenuItem("New")) { /* ... */
+      }
+      if (ImGui::MenuItem("Open...")) { /* ... */
+      }
+      if (ImGui::MenuItem("Save")) {
+        json saved = save_world(world);
+        std::filesystem::create_directories("assets");
+        std::string path =
+            "assets/" + world.currentScene.sceneName + ".scene.json";
+        std::ofstream file(path);
+        file << saved.dump(2);
+        std::print("Saved scene to {}\n", path);
+      }
       ImGui::Separator();
-      if (ImGui::MenuItem("Exit")) { /* ... */ }
+      if (ImGui::MenuItem("Exit")) { /* ... */
+      }
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Edit")) {
-      if (ImGui::MenuItem("Undo", "Ctrl+Z")) { /* ... */ }
-      if (ImGui::MenuItem("Redo", "Ctrl+Y")) { /* ... */ }
+      if (ImGui::MenuItem("Undo", "Ctrl+Z")) { /* ... */
+      }
+      if (ImGui::MenuItem("Redo", "Ctrl+Y")) { /* ... */
+      }
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View")) {
@@ -95,10 +108,6 @@ UPDATE_SYSTEM(topbar);
 void hierarchy(World &world) {
   ImGui::Begin("Hierarchy");
 
-  if (!world.has_resource<EditorStatus>()) {
-    world.add_resource<EditorStatus>();
-  }
-
   EditorStatus &editorState = *world.get_resource<EditorStatus>();
 
   if (ImGui::Button("New Entity")) {
@@ -122,10 +131,6 @@ UPDATE_SYSTEM(hierarchy);
 void inspector(World &world) {
   ImGui::Begin("Inspector");
 
-  if (!world.has_resource<EditorStatus>()) {
-    world.add_resource<EditorStatus>();
-  }
-
   EditorStatus &editorState = *world.get_resource<EditorStatus>();
 
   if (editorState.selectedID) {
@@ -143,23 +148,17 @@ void inspector(World &world) {
 UPDATE_SYSTEM(inspector);
 
 void assets(World &world) {
-
   EditorStatus &editorState = *world.get_resource<EditorStatus>();
-
-  int assetCount = 0;
   AssetManager &assetManager = *world.get_resource<AssetManager>();
   std::vector<IAssetLoader::AssetEntry> allAssets;
   for (auto &loader : assetManager.loaders) {
     auto entries = loader->getAllAssetEntries();
     allAssets.insert(allAssets.end(), entries.begin(), entries.end());
   }
-
   ImGui::Begin("Assets");
-
   ImGui::BeginChild("left pane", ImVec2(150, 0), true);
   ImGui::Text("Categories");
   ImGui::Separator();
-
   if (ImGui::Button("All")) {
     editorState.selectedAssetLoader = nullptr;
   }
@@ -172,35 +171,71 @@ void assets(World &world) {
   if (ImGui::Button("Shaders")) {
     editorState.selectedAssetLoader = assetManager.getLoader<ShaderAsset>();
   }
-
   if (ImGui::Button("Textures")) {
     editorState.selectedAssetLoader = assetManager.getLoader<TextureAsset>();
   }
   ImGui::EndChild();
   ImGui::SameLine();
-
   ImGui::BeginChild("right pane", ImVec2(0, 0), true);
-  ImGui::Text("Files (%d)", assetCount);
+  static char nameBuf[256];
+  strncpy(nameBuf, editorState.assetSearch.c_str(), sizeof(nameBuf));
+  ImGui::Text("Filter:");
+  ImGui::SameLine();
+  if (ImGui::InputText("##filter", nameBuf, sizeof(nameBuf))) {
+    editorState.assetSearch = nameBuf;
+  }
   ImGui::Separator();
+  for (auto &entry : allAssets) {
+    float windowVisibleX2 =
+        ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    bool isSelected = (editorState.selectedAsset == entry.name);
+    ImVec2 startPos = ImGui::GetCursorScreenPos();
+    ImVec2 groupSize(128, 128 + ImGui::GetTextLineHeightWithSpacing());
 
-  if (editorState.selectedAssetLoader == nullptr) {
-    for (auto &entry : allAssets) {
-      ImGui::Text("%s", entry.name.c_str());
+    if (editorState.selectedAssetLoader == nullptr) {
+    } else {
+
+      if (auto *texLoader =
+              dynamic_cast<const TextureLoader *>(entry.loaderFrom)) {
+        const TextureAsset &asset = texLoader->getAsset(entry.name);
+        if (!asset.imguiDS)
+          continue;
+        if (editorState.assetSearch != "" &&
+            !entry.name.contains(editorState.assetSearch)) {
+          continue;
+        }
+
+        ImGui::PushID(entry.name.c_str());
+
+        if (ImGui::Selectable("##sel", isSelected, ImGuiSelectableFlags_None,
+                              groupSize)) {
+          editorState.selectedAsset = entry.name;
+        }
+
+        ImGui::SetCursorScreenPos(startPos);
+        ImGui::BeginGroup();
+        ImGui::Image((ImTextureID)asset.imguiDS, ImVec2(128, 128));
+        ImGui::TextWrapped("%s", entry.name.c_str());
+        ImGui::EndGroup();
+
+        ImGui::PopID();
+      }
     }
-  } else {
-    for (auto &entry : editorState.selectedAssetLoader->getAllAssetEntries()) {
-      ImGui::Text("%s", entry.name.c_str());
-    }
+    float lastItemX2 = ImGui::GetItemRectMax().x;
+    float nextItemX2 = lastItemX2 + ImGui::GetStyle().ItemSpacing.x + 128.0f;
+    if (nextItemX2 < windowVisibleX2)
+      ImGui::SameLine();
   }
   ImGui::EndChild();
-
   ImGui::End();
 }
 UPDATE_SYSTEM(assets);
 
 void viewport(World &world) {
   auto *renderer = world.get_resource<VulkanRenderingContext *>();
-  if (!renderer)
+  auto *status = world.get_resource<EditorStatus>();
+  auto *input = world.get_resource<InputManager>();
+  if (!renderer || !status || !input)
     return;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
@@ -208,11 +243,15 @@ void viewport(World &world) {
   ImVec2 size = ImGui::GetContentRegionAvail();
   if (size.x > 0 && size.y > 0) {
     (*renderer)->pendingViewportExtent = {static_cast<uint32_t>(size.x),
-                                         static_cast<uint32_t>(size.y)};
+                                          static_cast<uint32_t>(size.y)};
     ImGui::Image(
         reinterpret_cast<ImTextureID>((*renderer)->viewportDescriptorSet),
         size);
   }
+
+  if (!input->isKeybindActive("camera_hold"))
+    status->isViewportHovered = ImGui::IsWindowHovered();
+
   ImGui::End();
   ImGui::PopStyleVar();
 }

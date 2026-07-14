@@ -81,7 +81,7 @@ public:
   vk::raii::CommandBuffer commandBuffer = nullptr;
   std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
   std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
-  vk::raii::Fence drawFence = nullptr;
+  std::vector<vk::raii::Fence> inFlightFences;
   std::vector<const char *> requiredDeviceExtension = {
       vk::KHRSwapchainExtensionName};
 
