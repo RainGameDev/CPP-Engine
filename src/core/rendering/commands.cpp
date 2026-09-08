@@ -17,21 +17,25 @@ void VulkanRenderingContext::createCommandPool() {
 }
 
 void VulkanRenderingContext::createCommandBuffer() {
-  vk::CommandBufferAllocateInfo allocInfo{.commandPool = commandPool,
-                                          .level =
-                                              vk::CommandBufferLevel::ePrimary,
-                                          .commandBufferCount = 1};
-  commandBuffer =
-      std::move(vk::raii::CommandBuffers(device, allocInfo).front());
+  vk::CommandBufferAllocateInfo allocInfo{
+      .commandPool = commandPool,
+      .level = vk::CommandBufferLevel::ePrimary,
+      .commandBufferCount = maxConcurrentFrames};
+  auto buffers = vk::raii::CommandBuffers(device, allocInfo);
+  commandBuffers.clear();
+  for (auto &buf : buffers) {
+    commandBuffers.push_back(std::move(buf));
+  }
 }
 
 void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
                                                  uint32_t currentFrame) {
-  commandBuffer.begin({});
+  auto &cmd = commandBuffers[currentFrame];
+  cmd.begin({});
 
   // --- Pass 1: Render 3D scene ---
 
-  transition_image_layout(*viewportColorImage, vk::ImageLayout::eUndefined,
+  transition_image_layout(cmd, *viewportColorImage, vk::ImageLayout::eUndefined,
                           vk::ImageLayout::eColorAttachmentOptimal, {},
                           vk::AccessFlagBits2::eColorAttachmentWrite,
                           vk::PipelineStageFlagBits2::eColorAttachmentOutput,
@@ -56,7 +60,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
     vk::DependencyInfo depthDepInfo = {.dependencyFlags = {},
                                        .imageMemoryBarrierCount = 1,
                                        .pImageMemoryBarriers = &depthBarrier};
-    commandBuffer.pipelineBarrier2(depthDepInfo);
+    cmd.pipelineBarrier2(depthDepInfo);
   }
 
   vk::ClearValue viewportClear = vk::ClearColorValue(0.0f, 0.1f, 0.75f, 1.0f);
@@ -85,7 +89,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
       .pColorAttachments = &viewportColorAttachment,
       .pDepthAttachment = &viewportDepthAttachment};
 
-  commandBuffer.beginRendering(viewportRenderingInfo);
+  cmd.beginRendering(viewportRenderingInfo);
 
   updateLightBuffer(currentFrame);
 
@@ -127,25 +131,24 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
 
       auto pipeline = getOrCreatePipeline(key);
 
-      commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+      cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
 
       uint32_t dynamicOffset =
           static_cast<uint32_t>(sizeof(TransformUBO) * entry.index);
 
-      commandBuffer.setViewport(
+      cmd.setViewport(
           0,
           vk::Viewport(0.0f, 0.0f, static_cast<float>(viewportExtent.width),
                        static_cast<float>(viewportExtent.height), 0.0f, 1.0f));
-      commandBuffer.setScissor(0,
-                               vk::Rect2D(vk::Offset2D(0, 0), viewportExtent));
+      cmd.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), viewportExtent));
 
       if (mesh->material != nullptr) {
-        commandBuffer.bindDescriptorSets(
+        cmd.bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
             {*descriptorSets[currentFrame], *mesh->material->descriptorSet},
             {dynamicOffset});
       } else {
-        commandBuffer.bindDescriptorSets(
+        cmd.bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
             {*descriptorSets[currentFrame]}, {dynamicOffset});
       }
@@ -159,21 +162,24 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
           .metallicFactor = mat ? mat->metallicFactor : 1.0f,
           .roughnessFactor = mat ? mat->roughnessFactor : 1.0f,
           .parallaxStrength = mat ? mat->parallaxStrength : 0.0f};
-      commandBuffer.pushConstants(*pipelineLayout,
-                                  vk::ShaderStageFlagBits::eVertex |
-                                      vk::ShaderStageFlagBits::eFragment,
-                                  0, sizeof(pc), &pc);
+      cmd.pushConstants(*pipelineLayout,
+                        vk::ShaderStageFlagBits::eVertex |
+                            vk::ShaderStageFlagBits::eFragment,
+                        0, sizeof(pc), &pc);
 
-      commandBuffer.bindVertexBuffers(0, {*mesh->vertexBuffer}, {0});
-      commandBuffer.bindIndexBuffer(*mesh->indexBuffer, 0,
-                                    vk::IndexType::eUint32);
-      commandBuffer.drawIndexed(mesh->indexCount, 1, 0, 0, 0);
+      // Skip draw if mesh buffers haven't been loaded yet
+      if (mesh->vertexBuffer == nullptr || mesh->indexBuffer == nullptr)
+        continue;
+
+      cmd.bindVertexBuffers(0, {*mesh->vertexBuffer}, {0});
+      cmd.bindIndexBuffer(*mesh->indexBuffer, 0, vk::IndexType::eUint32);
+      cmd.drawIndexed(mesh->indexCount, 1, 0, 0, 0);
     }
   }
 
-  commandBuffer.endRendering();
+  cmd.endRendering();
 
-  transition_image_layout(*viewportColorImage,
+  transition_image_layout(cmd, *viewportColorImage,
                           vk::ImageLayout::eColorAttachmentOptimal,
                           vk::ImageLayout::eShaderReadOnlyOptimal,
                           vk::AccessFlagBits2::eColorAttachmentWrite,
@@ -184,7 +190,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
   // --- Pass 2: Copy viewport texture to swapchain ---
 
   if (editorMode) {
-    transition_image_layout(imageIndex, vk::ImageLayout::eUndefined,
+    transition_image_layout(cmd, imageIndex, vk::ImageLayout::eUndefined,
                             vk::ImageLayout::eColorAttachmentOptimal, {},
                             vk::AccessFlagBits2::eColorAttachmentWrite,
                             vk::PipelineStageFlagBits2::eColorAttachmentOutput,
@@ -206,21 +212,21 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
         .colorAttachmentCount = 1,
         .pColorAttachments = &imguiColorAttachment};
 
-    commandBuffer.beginRendering(imguiRenderingInfo);
+    cmd.beginRendering(imguiRenderingInfo);
 
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer,
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *cmd,
                                     VK_NULL_HANDLE);
 
-    commandBuffer.endRendering();
+    cmd.endRendering();
 
     transition_image_layout(
-        imageIndex, vk::ImageLayout::eColorAttachmentOptimal,
+        cmd, imageIndex, vk::ImageLayout::eColorAttachmentOptimal,
         vk::ImageLayout::ePresentSrcKHR,
         vk::AccessFlagBits2::eColorAttachmentWrite, {},
         vk::PipelineStageFlagBits2::eColorAttachmentOutput,
         vk::PipelineStageFlagBits2::eBottomOfPipe);
   } else {
-    transition_image_layout(*viewportColorImage,
+    transition_image_layout(cmd, *viewportColorImage,
                             vk::ImageLayout::eShaderReadOnlyOptimal,
                             vk::ImageLayout::eTransferSrcOptimal,
                             vk::AccessFlagBits2::eShaderRead,
@@ -228,7 +234,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
                             vk::PipelineStageFlagBits2::eFragmentShader,
                             vk::PipelineStageFlagBits2::eTransfer);
 
-    transition_image_layout(imageIndex, vk::ImageLayout::eUndefined,
+    transition_image_layout(cmd, imageIndex, vk::ImageLayout::eUndefined,
                             vk::ImageLayout::eTransferDstOptimal, {},
                             vk::AccessFlagBits2::eTransferWrite,
                             vk::PipelineStageFlagBits2::eColorAttachmentOutput,
@@ -255,13 +261,13 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
                            .layerCount = 1},
         .dstOffsets = dstOffsets};
 
-    commandBuffer.blitImage(*viewportColorImage,
+    cmd.blitImage(*viewportColorImage,
                             vk::ImageLayout::eTransferSrcOptimal,
                             swapChainImages[imageIndex],
                             vk::ImageLayout::eTransferDstOptimal, blitRegion,
                             vk::Filter::eLinear);
 
-    transition_image_layout(imageIndex, vk::ImageLayout::eTransferDstOptimal,
+    transition_image_layout(cmd, imageIndex, vk::ImageLayout::eTransferDstOptimal,
                             vk::ImageLayout::eColorAttachmentOptimal,
                             vk::AccessFlagBits2::eTransferWrite,
                             vk::AccessFlagBits2::eColorAttachmentWrite,
@@ -284,26 +290,27 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
         .colorAttachmentCount = 1,
         .pColorAttachments = &imguiColorAttachment};
 
-    commandBuffer.beginRendering(imguiRenderingInfo);
+    cmd.beginRendering(imguiRenderingInfo);
 
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer,
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *cmd,
                                     VK_NULL_HANDLE);
 
-    commandBuffer.endRendering();
+    cmd.endRendering();
 
     transition_image_layout(
-        imageIndex, vk::ImageLayout::eColorAttachmentOptimal,
+        cmd, imageIndex, vk::ImageLayout::eColorAttachmentOptimal,
         vk::ImageLayout::ePresentSrcKHR,
         vk::AccessFlagBits2::eColorAttachmentWrite, {},
         vk::PipelineStageFlagBits2::eColorAttachmentOutput,
         vk::PipelineStageFlagBits2::eBottomOfPipe);
   }
 
-  commandBuffer.end();
+  cmd.end();
 }
 
 void VulkanRenderingContext::transition_image_layout(
-    uint32_t imageIndex, vk::ImageLayout oldLayout, vk::ImageLayout newLayout,
+    vk::raii::CommandBuffer &cmd, uint32_t imageIndex,
+    vk::ImageLayout oldLayout, vk::ImageLayout newLayout,
     vk::AccessFlags2 srcAccessMask, vk::AccessFlags2 dstAccessMask,
     vk::PipelineStageFlags2 srcStageMask,
     vk::PipelineStageFlags2 dstStageMask) {
@@ -325,13 +332,13 @@ void VulkanRenderingContext::transition_image_layout(
   vk::DependencyInfo dependencyInfo = {.dependencyFlags = {},
                                        .imageMemoryBarrierCount = 1,
                                        .pImageMemoryBarriers = &barrier};
-  commandBuffer.pipelineBarrier2(dependencyInfo);
+  cmd.pipelineBarrier2(dependencyInfo);
 }
 
 void VulkanRenderingContext::transition_image_layout(
-    vk::Image image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout,
-    vk::AccessFlags2 srcAccessMask, vk::AccessFlags2 dstAccessMask,
-    vk::PipelineStageFlags2 srcStageMask,
+    vk::raii::CommandBuffer &cmd, vk::Image image, vk::ImageLayout oldLayout,
+    vk::ImageLayout newLayout, vk::AccessFlags2 srcAccessMask,
+    vk::AccessFlags2 dstAccessMask, vk::PipelineStageFlags2 srcStageMask,
     vk::PipelineStageFlags2 dstStageMask) {
   vk::ImageMemoryBarrier2 barrier = {
       .srcStageMask = srcStageMask,
@@ -351,5 +358,5 @@ void VulkanRenderingContext::transition_image_layout(
   vk::DependencyInfo dependencyInfo = {.dependencyFlags = {},
                                        .imageMemoryBarrierCount = 1,
                                        .pImageMemoryBarriers = &barrier};
-  commandBuffer.pipelineBarrier2(dependencyInfo);
+  cmd.pipelineBarrier2(dependencyInfo);
 }

@@ -40,7 +40,7 @@ void VulkanRenderingContext::drawFrame() {
 
   device.resetFences(*inFlightFences[currentFrame]);
 
-  recordCommandBuffer(imageIndex, currentFrame % maxConcurrentFrames);
+  recordCommandBuffer(imageIndex, currentFrame);
 
   vk::PipelineStageFlags waitDestinationStageMask(
       vk::PipelineStageFlagBits::eColorAttachmentOutput);
@@ -49,7 +49,7 @@ void VulkanRenderingContext::drawFrame() {
       .pWaitSemaphores = &*presentCompleteSemaphores[currentFrame],
       .pWaitDstStageMask = &waitDestinationStageMask,
       .commandBufferCount = 1,
-      .pCommandBuffers = &*commandBuffer,
+      .pCommandBuffers = &*commandBuffers[currentFrame],
       .signalSemaphoreCount = 1,
       .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]};
   queue.submit(submitInfo, *inFlightFences[currentFrame]);

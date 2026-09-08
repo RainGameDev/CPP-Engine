@@ -78,7 +78,7 @@ public:
       graphicsPipelines;
 
   vk::raii::CommandPool commandPool = nullptr;
-  vk::raii::CommandBuffer commandBuffer = nullptr;
+  std::vector<vk::raii::CommandBuffer> commandBuffers;
   std::vector<vk::raii::Semaphore> presentCompleteSemaphores;
   std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
   std::vector<vk::raii::Fence> inFlightFences;
@@ -137,13 +137,16 @@ public:
   void createCommandPool();
   void createCommandBuffer();
   void recordCommandBuffer(uint32_t imageIndex, uint32_t currentFrame);
-  void transition_image_layout(uint32_t imageIndex, vk::ImageLayout old_layout,
+  void transition_image_layout(vk::raii::CommandBuffer &cmd,
+                               uint32_t imageIndex,
+                               vk::ImageLayout old_layout,
                                vk::ImageLayout new_layout,
                                vk::AccessFlags2 src_access_mask,
                                vk::AccessFlags2 dst_access_mask,
                                vk::PipelineStageFlags2 src_stage_mask,
                                vk::PipelineStageFlags2 dst_stage_mask);
-  void transition_image_layout(vk::Image image, vk::ImageLayout old_layout,
+  void transition_image_layout(vk::raii::CommandBuffer &cmd, vk::Image image,
+                               vk::ImageLayout old_layout,
                                vk::ImageLayout new_layout,
                                vk::AccessFlags2 src_access_mask,
                                vk::AccessFlags2 dst_access_mask,
@@ -181,6 +184,14 @@ public:
 
   void initImGui();
   void cleanupImGui();
+
+  std::array<VkDescriptorSet, maxConcurrentFrames> getRawDescriptorSets() const {
+    std::array<VkDescriptorSet, maxConcurrentFrames> result{};
+    for (uint32_t i = 0; i < maxConcurrentFrames; ++i) {
+      result[i] = static_cast<VkDescriptorSet>(*descriptorSets[i]);
+    }
+    return result;
+  }
 
   static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
       vk::DebugUtilsMessageSeverityFlagBitsEXT severity,

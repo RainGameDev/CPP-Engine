@@ -2,8 +2,13 @@
 #include "asset_loader.h"
 #include "asset_manager.h"
 #include "assets/obj_loader.h"
+#include "imgui_impl_vulkan.h"
 #include "rendering/mesh.h"
+#include "rendering/ubo.h"
+#include <cfloat>
 #include <fstream>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <vector>
 
 #include <vulkan/vulkan.hpp>
@@ -11,6 +16,66 @@
 
 struct MeshAsset {
   Mesh mesh;
+
+  // --- Preview thumbnail resources ---
+  vk::raii::Image previewImage{nullptr};
+  vk::raii::DeviceMemory previewMemory{nullptr};
+  vk::raii::ImageView previewView{nullptr};
+
+  vk::raii::Image previewDepthImage{nullptr};
+  vk::raii::DeviceMemory previewDepthMemory{nullptr};
+  vk::raii::ImageView previewDepthView{nullptr};
+
+  vk::raii::Sampler previewSampler{nullptr};
+  vk::raii::Framebuffer previewFramebuffer{nullptr};
+
+  VkDescriptorSet previewTexture = VK_NULL_HANDLE;
+
+  static constexpr uint32_t kPreviewSize = 128;
+  static constexpr vk::Format kPreviewColorFormat = vk::Format::eR8G8B8A8Unorm;
+  static constexpr vk::Format kPreviewDepthFormat = vk::Format::eD32Sfloat;
+
+  MeshAsset() = default;
+  MeshAsset(MeshAsset &&other) noexcept
+      : mesh(std::move(other.mesh)),
+        previewImage(std::move(other.previewImage)),
+        previewMemory(std::move(other.previewMemory)),
+        previewView(std::move(other.previewView)),
+        previewDepthImage(std::move(other.previewDepthImage)),
+        previewDepthMemory(std::move(other.previewDepthMemory)),
+        previewDepthView(std::move(other.previewDepthView)),
+        previewSampler(std::move(other.previewSampler)),
+        previewFramebuffer(std::move(other.previewFramebuffer)),
+        previewTexture(other.previewTexture) {
+    other.previewTexture = VK_NULL_HANDLE;
+  }
+  MeshAsset &operator=(MeshAsset &&other) noexcept {
+    if (this != &other) {
+      if (previewTexture != VK_NULL_HANDLE)
+        ImGui_ImplVulkan_RemoveTexture(previewTexture);
+      mesh = std::move(other.mesh);
+      previewImage = std::move(other.previewImage);
+      previewMemory = std::move(other.previewMemory);
+      previewView = std::move(other.previewView);
+      previewDepthImage = std::move(other.previewDepthImage);
+      previewDepthMemory = std::move(other.previewDepthMemory);
+      previewDepthView = std::move(other.previewDepthView);
+      previewSampler = std::move(other.previewSampler);
+      previewFramebuffer = std::move(other.previewFramebuffer);
+      previewTexture = other.previewTexture;
+      other.previewTexture = VK_NULL_HANDLE;
+    }
+    return *this;
+  }
+  MeshAsset(const MeshAsset &) = delete;
+  MeshAsset &operator=(const MeshAsset &) = delete;
+
+  ~MeshAsset() {
+    if (previewTexture != VK_NULL_HANDLE) {
+      ImGui_ImplVulkan_RemoveTexture(previewTexture);
+      previewTexture = VK_NULL_HANDLE;
+    }
+  }
 };
 
 class ModelLoader : public AssetLoader<MeshAsset> {
@@ -20,14 +85,42 @@ class ModelLoader : public AssetLoader<MeshAsset> {
   vk::raii::Queue &queue;
   AssetManager &assetManager;
 
+  // Shared preview render-pass/pipeline, built once and reused for every
+  // asset's thumbnail render, rather than per-asset.
+  vk::raii::RenderPass previewRenderPass{nullptr};
+  vk::raii::PipelineLayout previewPipelineLayout{nullptr};
+  vk::raii::Pipeline previewPipeline{nullptr};
+
+  // Dedicated camera/transform/lights set for thumbnail renders, so previews
+  // are framed independently of the live scene camera.
+  struct PreviewCamera {
+    vk::raii::Buffer camBuffer{nullptr};
+    vk::raii::DeviceMemory camMemory{nullptr};
+    void *camMapped = nullptr;
+    vk::raii::Buffer transformBuffer{nullptr};
+    vk::raii::DeviceMemory transformMemory{nullptr};
+    void *transformMapped = nullptr;
+    vk::raii::Buffer lightBuffer{nullptr};
+    vk::raii::DeviceMemory lightMemory{nullptr};
+    void *lightMapped = nullptr;
+    vk::raii::DescriptorPool pool{nullptr};
+    vk::raii::DescriptorSets sets{nullptr};
+    VkDescriptorSet set = VK_NULL_HANDLE;
+  } previewCamera;
+
 public:
   ModelLoader(vk::raii::Device &device,
               vk::raii::PhysicalDevice &physicalDevice,
               vk::raii::CommandPool &commandPool, vk::raii::Queue &queue,
-              AssetManager &assetManager)
+              AssetManager &assetManager,
+              vk::DescriptorSetLayout perFrameSetLayout,
+              vk::DescriptorSetLayout materialSetLayout)
       : device(device), physicalDevice(physicalDevice),
-        commandPool(commandPool), queue(queue),
-        assetManager(assetManager) {}
+        commandPool(commandPool), queue(queue), assetManager(assetManager) {
+    createPreviewRenderPass();
+    createPreviewPipeline(perFrameSetLayout, materialSetLayout);
+    createPreviewCamera(perFrameSetLayout);
+  }
 
   std::vector<std::string> extensions() const override {
     return {".obj", ".gltf", ".glb"};
@@ -85,10 +178,464 @@ public:
 
     copyBuffer(indexStagingBuffer, mesh.indexBuffer, indexBufferSize);
 
-    return MeshAsset{std::move(mesh)};
+    MeshAsset asset{};
+    asset.mesh = std::move(mesh);
+
+    createPreviewTarget(asset);
+    renderPreview(asset, data.vertices);
+
+    return asset;
   }
 
 private:
+  // ---------------------------------------------------------------------
+  // Shared preview render pass / pipeline (built once)
+  // ---------------------------------------------------------------------
+
+  void createPreviewRenderPass() {
+    vk::AttachmentDescription colorAttachment{
+        .format = MeshAsset::kPreviewColorFormat,
+        .samples = vk::SampleCountFlagBits::e1,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
+        .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+        .initialLayout = vk::ImageLayout::eUndefined,
+        .finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+
+    vk::AttachmentDescription depthAttachment{
+        .format = MeshAsset::kPreviewDepthFormat,
+        .samples = vk::SampleCountFlagBits::e1,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eDontCare,
+        .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
+        .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+        .initialLayout = vk::ImageLayout::eUndefined,
+        .finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal};
+
+    vk::AttachmentReference colorRef{
+        .attachment = 0, .layout = vk::ImageLayout::eColorAttachmentOptimal};
+    vk::AttachmentReference depthRef{
+        .attachment = 1,
+        .layout = vk::ImageLayout::eDepthStencilAttachmentOptimal};
+
+    vk::SubpassDescription subpass{.pipelineBindPoint =
+                                       vk::PipelineBindPoint::eGraphics,
+                                   .colorAttachmentCount = 1,
+                                   .pColorAttachments = &colorRef,
+                                   .pDepthStencilAttachment = &depthRef};
+
+    std::array<vk::SubpassDependency, 2> dependencies{{
+        {.srcSubpass = VK_SUBPASS_EXTERNAL,
+         .dstSubpass = 0,
+         .srcStageMask = vk::PipelineStageFlagBits::eFragmentShader,
+         .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
+                         vk::PipelineStageFlagBits::eEarlyFragmentTests,
+         .srcAccessMask = vk::AccessFlagBits::eShaderRead,
+         .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite |
+                          vk::AccessFlagBits::eDepthStencilAttachmentWrite},
+        {.srcSubpass = 0,
+         .dstSubpass = VK_SUBPASS_EXTERNAL,
+         .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+         .dstStageMask = vk::PipelineStageFlagBits::eFragmentShader,
+         .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+         .dstAccessMask = vk::AccessFlagBits::eShaderRead},
+    }};
+
+    std::array<vk::AttachmentDescription, 2> attachments{colorAttachment,
+                                                         depthAttachment};
+
+    vk::RenderPassCreateInfo rpInfo{
+        .attachmentCount = static_cast<uint32_t>(attachments.size()),
+        .pAttachments = attachments.data(),
+        .subpassCount = 1,
+        .pSubpasses = &subpass,
+        .dependencyCount = static_cast<uint32_t>(dependencies.size()),
+        .pDependencies = dependencies.data()};
+
+    previewRenderPass = vk::raii::RenderPass(device, rpInfo);
+  }
+
+  static std::vector<char> readSpirv(const std::string &path) {
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
+    if (!file.is_open())
+      throw std::runtime_error("failed to open shader file: " + path);
+    size_t size = static_cast<size_t>(file.tellg());
+    std::vector<char> buffer(size);
+    file.seekg(0);
+    file.read(buffer.data(), static_cast<std::streamsize>(size));
+    return buffer;
+  }
+
+  vk::raii::ShaderModule loadShaderModule(const std::string &path) {
+    auto code = readSpirv(path);
+    vk::ShaderModuleCreateInfo info{
+        .codeSize = code.size(),
+        .pCode = reinterpret_cast<const uint32_t *>(code.data())};
+    return vk::raii::ShaderModule(device, info);
+  }
+
+  void createPreviewPipeline(vk::DescriptorSetLayout perFrameSetLayout,
+                             vk::DescriptorSetLayout materialSetLayout) {
+    auto vertModule =
+        loadShaderModule("assets/shaders/pbr_model_standard.vert.spv");
+    auto fragModule =
+        loadShaderModule("assets/shaders/pbr_model_standard.frag.spv");
+
+    std::array<vk::PipelineShaderStageCreateInfo, 2> stages{{
+        {.stage = vk::ShaderStageFlagBits::eVertex,
+         .module = *vertModule,
+         .pName = "main"},
+        {.stage = vk::ShaderStageFlagBits::eFragment,
+         .module = *fragModule,
+         .pName = "main"},
+    }};
+
+    auto bindingDesc = Vertex::getBindingDescription();
+    auto attribDescs = Vertex::getAttributeDescriptions();
+
+    vk::PipelineVertexInputStateCreateInfo vertexInput{
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions = &bindingDesc,
+        .vertexAttributeDescriptionCount =
+            static_cast<uint32_t>(attribDescs.size()),
+        .pVertexAttributeDescriptions = attribDescs.data()};
+
+    vk::PipelineInputAssemblyStateCreateInfo inputAssembly{
+        .topology = vk::PrimitiveTopology::eTriangleList};
+
+    vk::PipelineRasterizationStateCreateInfo rasterizer{
+        .polygonMode = vk::PolygonMode::eFill,
+        .cullMode = vk::CullModeFlagBits::eNone,
+        .frontFace = vk::FrontFace::eCounterClockwise,
+        .lineWidth = 1.0f};
+
+    vk::PipelineMultisampleStateCreateInfo multisampling{
+        .rasterizationSamples = vk::SampleCountFlagBits::e1};
+
+    vk::PipelineDepthStencilStateCreateInfo depthStencil{
+        .depthTestEnable = vk::True,
+        .depthWriteEnable = vk::True,
+        .depthCompareOp = vk::CompareOp::eLess};
+
+    vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+        .blendEnable = vk::False,
+        .colorWriteMask =
+            vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+            vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+    vk::PipelineColorBlendStateCreateInfo colorBlending{
+        .attachmentCount = 1, .pAttachments = &colorBlendAttachment};
+
+    std::array<vk::DescriptorSetLayout, 2> setLayouts{perFrameSetLayout,
+                                                      materialSetLayout};
+    vk::PushConstantRange pushConstant{.stageFlags =
+                                           vk::ShaderStageFlagBits::eVertex |
+                                           vk::ShaderStageFlagBits::eFragment,
+                                       .offset = 0,
+                                       .size = sizeof(MaterialPushConstants)};
+
+    vk::PipelineLayoutCreateInfo layoutInfo{
+        .setLayoutCount = static_cast<uint32_t>(setLayouts.size()),
+        .pSetLayouts = setLayouts.data(),
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &pushConstant};
+    previewPipelineLayout = vk::raii::PipelineLayout(device, layoutInfo);
+
+    vk::DynamicState dynamicStates[] = {vk::DynamicState::eViewport,
+                                        vk::DynamicState::eScissor};
+    vk::PipelineDynamicStateCreateInfo dynamicState{
+        .dynamicStateCount = 2, .pDynamicStates = dynamicStates};
+
+    vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1,
+                                                      .scissorCount = 1};
+
+    vk::GraphicsPipelineCreateInfo pipelineInfo{
+        .stageCount = static_cast<uint32_t>(stages.size()),
+        .pStages = stages.data(),
+        .pVertexInputState = &vertexInput,
+        .pInputAssemblyState = &inputAssembly,
+        .pViewportState = &viewportState,
+        .pRasterizationState = &rasterizer,
+        .pMultisampleState = &multisampling,
+        .pDepthStencilState = &depthStencil,
+        .pColorBlendState = &colorBlending,
+        .pDynamicState = &dynamicState,
+        .layout = *previewPipelineLayout,
+        .renderPass = *previewRenderPass,
+        .subpass = 0};
+
+    previewPipeline = vk::raii::Pipeline(device, nullptr, pipelineInfo);
+  }
+
+  void createPreviewCamera(vk::DescriptorSetLayout perFrameSetLayout) {
+    // Buffers host-visible + coherent so they can be written directly.
+    auto makeBuffer = [&](vk::raii::Buffer &buffer,
+                          vk::raii::DeviceMemory &memory, void *&mapped,
+                          vk::DeviceSize size) {
+      createBuffer(size, vk::BufferUsageFlagBits::eUniformBuffer,
+                   vk::MemoryPropertyFlagBits::eHostVisible |
+                       vk::MemoryPropertyFlagBits::eHostCoherent,
+                   buffer, memory);
+      mapped = memory.mapMemory(0, size);
+    };
+    makeBuffer(previewCamera.camBuffer, previewCamera.camMemory,
+               previewCamera.camMapped, sizeof(UniformBufferObject));
+    makeBuffer(previewCamera.transformBuffer, previewCamera.transformMemory,
+               previewCamera.transformMapped, sizeof(TransformUBO));
+    makeBuffer(previewCamera.lightBuffer, previewCamera.lightMemory,
+               previewCamera.lightMapped, sizeof(LightsUBO));
+
+    std::array<vk::DescriptorPoolSize, 2> poolSizes = {
+        vk::DescriptorPoolSize{vk::DescriptorType::eUniformBuffer, 2},
+        vk::DescriptorPoolSize{vk::DescriptorType::eUniformBufferDynamic, 1}};
+    previewCamera.pool = device.createDescriptorPool(
+        {.maxSets = 1,
+         .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+         .pPoolSizes = poolSizes.data()});
+
+    vk::DescriptorSetAllocateInfo alloc{.descriptorPool = *previewCamera.pool,
+                                        .descriptorSetCount = 1,
+                                        .pSetLayouts = &perFrameSetLayout};
+    previewCamera.sets = device.allocateDescriptorSets(alloc);
+    previewCamera.set = *previewCamera.sets.front();
+
+    vk::DescriptorBufferInfo camInfo{.buffer = *previewCamera.camBuffer,
+                                     .offset = 0,
+                                     .range = sizeof(UniformBufferObject)};
+    vk::DescriptorBufferInfo transformInfo{.buffer =
+                                               *previewCamera.transformBuffer,
+                                           .offset = 0,
+                                           .range = sizeof(TransformUBO)};
+    vk::DescriptorBufferInfo lightInfo{.buffer = *previewCamera.lightBuffer,
+                                       .offset = 0,
+                                       .range = sizeof(LightsUBO)};
+
+    std::array<vk::WriteDescriptorSet, 3> writes = {{
+        {.dstSet = previewCamera.set,
+         .dstBinding = 0,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eUniformBuffer,
+         .pBufferInfo = &camInfo},
+        {.dstSet = previewCamera.set,
+         .dstBinding = 1,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
+         .pBufferInfo = &transformInfo},
+        {.dstSet = previewCamera.set,
+         .dstBinding = 2,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eUniformBuffer,
+         .pBufferInfo = &lightInfo},
+    }};
+    device.updateDescriptorSets(writes, nullptr);
+
+    LightsUBO lights{};
+    lights.count = 1;
+    lights.lights[0].positionOrDirection =
+        glm::vec4(glm::normalize(glm::vec3(0.5f, 0.8f, 0.6f)), 0.0f);
+    lights.lights[0].colorAndIntensity = glm::vec4(1.0f, 1.0f, 1.0f, 1.5f);
+    memcpy(previewCamera.lightMapped, &lights, sizeof(lights));
+
+    TransformUBO transform{};
+    transform.rotation = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    transform.scale = glm::vec4(1.0f);
+    memcpy(previewCamera.transformMapped, &transform, sizeof(transform));
+  }
+
+  // ---------------------------------------------------------------------
+  // Per-asset preview target
+  // ---------------------------------------------------------------------
+
+  void createPreviewTarget(MeshAsset &asset) {
+    const uint32_t sz = MeshAsset::kPreviewSize;
+
+    // Color image
+    vk::ImageCreateInfo colorInfo{.imageType = vk::ImageType::e2D,
+                                  .format = MeshAsset::kPreviewColorFormat,
+                                  .extent = {sz, sz, 1},
+                                  .mipLevels = 1,
+                                  .arrayLayers = 1,
+                                  .samples = vk::SampleCountFlagBits::e1,
+                                  .tiling = vk::ImageTiling::eOptimal,
+                                  .usage =
+                                      vk::ImageUsageFlagBits::eColorAttachment |
+                                      vk::ImageUsageFlagBits::eSampled,
+                                  .sharingMode = vk::SharingMode::eExclusive,
+                                  .initialLayout = vk::ImageLayout::eUndefined};
+    asset.previewImage = vk::raii::Image(device, colorInfo);
+
+    auto colorMem = asset.previewImage.getMemoryRequirements();
+    vk::MemoryAllocateInfo colorAlloc{
+        .allocationSize = colorMem.size,
+        .memoryTypeIndex = findMemoryType(
+            colorMem.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)};
+    asset.previewMemory = vk::raii::DeviceMemory(device, colorAlloc);
+    asset.previewImage.bindMemory(*asset.previewMemory, 0);
+
+    vk::ImageViewCreateInfo colorViewInfo{
+        .image = *asset.previewImage,
+        .viewType = vk::ImageViewType::e2D,
+        .format = MeshAsset::kPreviewColorFormat,
+        .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                             .levelCount = 1,
+                             .layerCount = 1}};
+    asset.previewView = vk::raii::ImageView(device, colorViewInfo);
+
+    // Depth image
+    vk::ImageCreateInfo depthInfo{
+        .imageType = vk::ImageType::e2D,
+        .format = MeshAsset::kPreviewDepthFormat,
+        .extent = {sz, sz, 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
+        .sharingMode = vk::SharingMode::eExclusive,
+        .initialLayout = vk::ImageLayout::eUndefined};
+    asset.previewDepthImage = vk::raii::Image(device, depthInfo);
+
+    auto depthMem = asset.previewDepthImage.getMemoryRequirements();
+    vk::MemoryAllocateInfo depthAlloc{
+        .allocationSize = depthMem.size,
+        .memoryTypeIndex = findMemoryType(
+            depthMem.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)};
+    asset.previewDepthMemory = vk::raii::DeviceMemory(device, depthAlloc);
+    asset.previewDepthImage.bindMemory(*asset.previewDepthMemory, 0);
+
+    vk::ImageViewCreateInfo depthViewInfo{
+        .image = *asset.previewDepthImage,
+        .viewType = vk::ImageViewType::e2D,
+        .format = MeshAsset::kPreviewDepthFormat,
+        .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
+                             .levelCount = 1,
+                             .layerCount = 1}};
+    asset.previewDepthView = vk::raii::ImageView(device, depthViewInfo);
+
+    // Sampler
+    asset.previewSampler = vk::raii::Sampler(
+        device, {.magFilter = vk::Filter::eLinear,
+                 .minFilter = vk::Filter::eLinear,
+                 .mipmapMode = vk::SamplerMipmapMode::eNearest,
+                 .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+                 .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+                 .addressModeW = vk::SamplerAddressMode::eClampToEdge});
+
+    // Framebuffer
+    std::array<vk::ImageView, 2> fbAttachments{*asset.previewView,
+                                               *asset.previewDepthView};
+    vk::FramebufferCreateInfo fbInfo{
+        .renderPass = *previewRenderPass,
+        .attachmentCount = static_cast<uint32_t>(fbAttachments.size()),
+        .pAttachments = fbAttachments.data(),
+        .width = sz,
+        .height = sz,
+        .layers = 1};
+    asset.previewFramebuffer = vk::raii::Framebuffer(device, fbInfo);
+  }
+
+  void renderPreview(MeshAsset &asset, const std::vector<Vertex> &vertices) {
+    const uint32_t sz = MeshAsset::kPreviewSize;
+
+    glm::vec3 minV{FLT_MAX};
+    glm::vec3 maxV{-FLT_MAX};
+    for (auto &v : vertices) {
+      minV = glm::min(minV, v.pos);
+      maxV = glm::max(maxV, v.pos);
+    }
+    glm::vec3 center = (minV + maxV) * 0.5f;
+    glm::vec3 extent = maxV - minV;
+    float maxDim = std::max({extent.x, extent.y, extent.z});
+    if (maxDim < 1e-6f)
+      maxDim = 1.0f;
+
+    float dist = maxDim * 2.0f;
+    glm::vec3 eye = center + glm::vec3(dist * 0.7f, dist * 0.5f, dist * 0.7f);
+    glm::mat4 view = glm::lookAt(eye, center, glm::vec3(0, 1, 0));
+
+    float half = maxDim * 0.55f;
+    glm::mat4 proj =
+        glm::orthoZO(-half, half, -half, half, 0.01f, dist + maxDim * 2.0f);
+    // Vulkan Y-flip
+    proj[1][1] *= -1;
+
+    UniformBufferObject cubo{};
+    cubo.view = view;
+    cubo.proj = proj;
+    cubo.pos = glm::vec4(eye, 1.0f);
+    memcpy(previewCamera.camMapped, &cubo, sizeof(cubo));
+
+    MaterialPushConstants pc{};
+    pc.baseColorFactor = glm::vec4(1.0f);
+    pc.metallicFactor = 1.0f;
+    pc.roughnessFactor = 1.0f;
+    pc.parallaxStrength = 0.0f;
+
+    auto cmdBufs = vk::raii::CommandBuffers(
+        device, {.commandPool = *commandPool,
+                 .level = vk::CommandBufferLevel::ePrimary,
+                 .commandBufferCount = 1});
+    auto cmd = std::move(cmdBufs.front());
+    cmd.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+
+    std::array<vk::ClearValue, 2> clearValues{
+        vk::ClearColorValue{std::array{0.1f, 0.1f, 0.1f, 1.0f}},
+        vk::ClearDepthStencilValue{1.0f, 0}};
+
+    vk::RenderPassBeginInfo rpInfo{
+        .renderPass = *previewRenderPass,
+        .framebuffer = *asset.previewFramebuffer,
+        .renderArea = {{0, 0}, {sz, sz}},
+        .clearValueCount = static_cast<uint32_t>(clearValues.size()),
+        .pClearValues = clearValues.data()};
+    cmd.beginRenderPass(rpInfo, vk::SubpassContents::eInline);
+
+    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *previewPipeline);
+
+    cmd.setViewport(0, vk::Viewport{0.0f, 0.0f, static_cast<float>(sz),
+                                    static_cast<float>(sz), 0.0f, 1.0f});
+    cmd.setScissor(0, vk::Rect2D{{0, 0}, {sz, sz}});
+
+    cmd.pushConstants<MaterialPushConstants>(
+        *previewPipelineLayout,
+        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+        0, pc);
+
+    // Bind descriptor sets
+    if (asset.mesh.material) {
+      cmd.bindDescriptorSets(
+          vk::PipelineBindPoint::eGraphics, *previewPipelineLayout, 0,
+          {previewCamera.set, *asset.mesh.material->descriptorSet}, {0});
+    } else {
+      cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                             *previewPipelineLayout, 0, {previewCamera.set},
+                             {0});
+    }
+
+    cmd.bindVertexBuffers(0, {*asset.mesh.vertexBuffer}, {0});
+    cmd.bindIndexBuffer(*asset.mesh.indexBuffer, 0, vk::IndexType::eUint32);
+    cmd.drawIndexed(asset.mesh.indexCount, 1, 0, 0, 0);
+
+    cmd.endRenderPass();
+
+    cmd.end();
+
+    vk::SubmitInfo submit{.commandBufferCount = 1, .pCommandBuffers = &*cmd};
+    queue.submit(submit, nullptr);
+    queue.waitIdle();
+
+    asset.previewTexture =
+        ImGui_ImplVulkan_AddTexture(*asset.previewSampler, *asset.previewView,
+                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  }
+
+  // ---------------------------------------------------------------------
+  // Existing helpers
+  // ---------------------------------------------------------------------
+
   void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                     vk::MemoryPropertyFlags properties,
                     vk::raii::Buffer &buffer,

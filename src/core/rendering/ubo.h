@@ -1,3 +1,5 @@
+#pragma once
+
 #include "glm/ext/vector_float4.hpp"
 #include <glm/glm.hpp>
 
