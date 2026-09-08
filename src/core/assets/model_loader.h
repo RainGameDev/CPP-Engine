@@ -31,6 +31,14 @@ struct MeshAsset {
 
   VkDescriptorSet previewTexture = VK_NULL_HANDLE;
 
+  // Bounding box captured at load time, used to frame the preview camera.
+  glm::vec3 previewMin{FLT_MAX};
+  glm::vec3 previewMax{-FLT_MAX};
+
+  // Interactive preview orientation (euler, degrees).
+  float previewYaw = 0.0f;
+  float previewPitch = 0.0f;
+
   static constexpr uint32_t kPreviewSize = 128;
   static constexpr vk::Format kPreviewColorFormat = vk::Format::eR8G8B8A8Unorm;
   static constexpr vk::Format kPreviewDepthFormat = vk::Format::eD32Sfloat;
@@ -46,7 +54,11 @@ struct MeshAsset {
         previewDepthView(std::move(other.previewDepthView)),
         previewSampler(std::move(other.previewSampler)),
         previewFramebuffer(std::move(other.previewFramebuffer)),
-        previewTexture(other.previewTexture) {
+        previewTexture(other.previewTexture),
+        previewMin(other.previewMin),
+        previewMax(other.previewMax),
+        previewYaw(other.previewYaw),
+        previewPitch(other.previewPitch) {
     other.previewTexture = VK_NULL_HANDLE;
   }
   MeshAsset &operator=(MeshAsset &&other) noexcept {
@@ -63,6 +75,10 @@ struct MeshAsset {
       previewSampler = std::move(other.previewSampler);
       previewFramebuffer = std::move(other.previewFramebuffer);
       previewTexture = other.previewTexture;
+      previewMin = other.previewMin;
+      previewMax = other.previewMax;
+      previewYaw = other.previewYaw;
+      previewPitch = other.previewPitch;
       other.previewTexture = VK_NULL_HANDLE;
     }
     return *this;
@@ -151,7 +167,8 @@ public:
 
     createBuffer(vertexBufferSize,
                  vk::BufferUsageFlagBits::eVertexBuffer |
-                     vk::BufferUsageFlagBits::eTransferDst,
+                     vk::BufferUsageFlagBits::eTransferDst |
+                     vk::BufferUsageFlagBits::eTransferSrc,
                  vk::MemoryPropertyFlagBits::eDeviceLocal, mesh.vertexBuffer,
                  mesh.vertexMemory);
 
@@ -172,7 +189,8 @@ public:
 
     createBuffer(indexBufferSize,
                  vk::BufferUsageFlagBits::eIndexBuffer |
-                     vk::BufferUsageFlagBits::eTransferDst,
+                     vk::BufferUsageFlagBits::eTransferDst |
+                     vk::BufferUsageFlagBits::eTransferSrc,
                  vk::MemoryPropertyFlagBits::eDeviceLocal, mesh.indexBuffer,
                  mesh.indexMemory);
 
@@ -181,10 +199,58 @@ public:
     MeshAsset asset{};
     asset.mesh = std::move(mesh);
 
+    glm::vec3 minV{FLT_MAX};
+    glm::vec3 maxV{-FLT_MAX};
+    for (const auto &v : data.vertices) {
+      minV = glm::min(minV, v.pos);
+      maxV = glm::max(maxV, v.pos);
+    }
+    asset.previewMin = minV;
+    asset.previewMax = maxV;
+
     createPreviewTarget(asset);
-    renderPreview(asset, data.vertices);
+    renderPreview(asset);
 
     return asset;
+  }
+
+  /// Makes an independent copy of a loaded mesh with fresh GPU buffers, so
+  /// scene entities can hold their own geometry without emptying the asset
+  /// that the preview thumbnails are rendered from.
+  Mesh duplicateMesh(const Mesh &mesh) {
+    Mesh clone{};
+    clone.vertexCount = mesh.vertexCount;
+    clone.indexCount = mesh.indexCount;
+    clone.material = mesh.material;
+    if (mesh.vertexCount > 0) {
+      vk::DeviceSize vbSize = sizeof(Vertex) * mesh.vertexCount;
+      createBuffer(vbSize,
+                   vk::BufferUsageFlagBits::eVertexBuffer |
+                       vk::BufferUsageFlagBits::eTransferDst,
+                   vk::MemoryPropertyFlagBits::eDeviceLocal, clone.vertexBuffer,
+                   clone.vertexMemory);
+      copyBuffer(mesh.vertexBuffer, clone.vertexBuffer, vbSize);
+    }
+    if (mesh.indexCount > 0) {
+      vk::DeviceSize ibSize = sizeof(uint32_t) * mesh.indexCount;
+      createBuffer(ibSize,
+                   vk::BufferUsageFlagBits::eIndexBuffer |
+                       vk::BufferUsageFlagBits::eTransferDst,
+                   vk::MemoryPropertyFlagBits::eDeviceLocal, clone.indexBuffer,
+                   clone.indexMemory);
+      copyBuffer(mesh.indexBuffer, clone.indexBuffer, ibSize);
+    }
+    return clone;
+  }
+
+  /// Re-renders an asset's thumbnail after its preview orientation changed.
+  void refreshPreview(const std::string &name) {
+    auto it = assets.find(name);
+    if (it == assets.end())
+      return;
+    MeshAsset &asset = it->second;
+    device.waitIdle();
+    renderPreview(asset);
   }
 
 private:
@@ -389,7 +455,8 @@ private:
         vk::DescriptorPoolSize{vk::DescriptorType::eUniformBuffer, 2},
         vk::DescriptorPoolSize{vk::DescriptorType::eUniformBufferDynamic, 1}};
     previewCamera.pool = device.createDescriptorPool(
-        {.maxSets = 1,
+        {.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+         .maxSets = 1,
          .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
          .pPoolSizes = poolSizes.data()});
 
@@ -438,11 +505,6 @@ private:
         glm::vec4(glm::normalize(glm::vec3(0.5f, 0.8f, 0.6f)), 0.0f);
     lights.lights[0].colorAndIntensity = glm::vec4(1.0f, 1.0f, 1.0f, 1.5f);
     memcpy(previewCamera.lightMapped, &lights, sizeof(lights));
-
-    TransformUBO transform{};
-    transform.rotation = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-    transform.scale = glm::vec4(1.0f);
-    memcpy(previewCamera.transformMapped, &transform, sizeof(transform));
   }
 
   // ---------------------------------------------------------------------
@@ -537,15 +599,14 @@ private:
     asset.previewFramebuffer = vk::raii::Framebuffer(device, fbInfo);
   }
 
-  void renderPreview(MeshAsset &asset, const std::vector<Vertex> &vertices) {
+  void renderPreview(MeshAsset &asset) {
     const uint32_t sz = MeshAsset::kPreviewSize;
 
-    glm::vec3 minV{FLT_MAX};
-    glm::vec3 maxV{-FLT_MAX};
-    for (auto &v : vertices) {
-      minV = glm::min(minV, v.pos);
-      maxV = glm::max(maxV, v.pos);
-    }
+    // Bounding box, purely for framing the camera — the mesh's own
+    // vertex data is never shifted, so there's no mismatch between where
+    // the geometry actually is and where the camera looks.
+    glm::vec3 minV = asset.previewMin;
+    glm::vec3 maxV = asset.previewMax;
     glm::vec3 center = (minV + maxV) * 0.5f;
     glm::vec3 extent = maxV - minV;
     float maxDim = std::max({extent.x, extent.y, extent.z});
@@ -567,6 +628,14 @@ private:
     cubo.proj = proj;
     cubo.pos = glm::vec4(eye, 1.0f);
     memcpy(previewCamera.camMapped, &cubo, sizeof(cubo));
+
+    // Per-asset orientation applied as a mesh transform (model space).
+    TransformUBO transform{};
+    transform.rotation = glm::vec4(
+        glm::radians(asset.previewPitch), glm::radians(asset.previewYaw),
+        0.0f, 0.0f);
+    transform.scale = glm::vec4(1.0f);
+    memcpy(previewCamera.transformMapped, &transform, sizeof(transform));
 
     MaterialPushConstants pc{};
     pc.baseColorFactor = glm::vec4(1.0f);
@@ -627,9 +696,16 @@ private:
     queue.submit(submit, nullptr);
     queue.waitIdle();
 
-    asset.previewTexture =
-        ImGui_ImplVulkan_AddTexture(*asset.previewSampler, *asset.previewView,
-                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    // Keep the same ImGui descriptor set for the asset's whole lifetime.
+    // Re-uploading into the same image is safe because the caller waits for
+    // the device to be idle before re-rendering, and the descriptor set stays
+    // valid so the current frame's already-recorded ImGui draw still binds a
+    // live set (no mid-frame RemoveTexture).
+    if (asset.previewTexture == VK_NULL_HANDLE) {
+      asset.previewTexture =
+          ImGui_ImplVulkan_AddTexture(*asset.previewSampler, *asset.previewView,
+                                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -656,8 +732,8 @@ private:
     buffer.bindMemory(*bufferMemory, 0);
   }
 
-  void copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuffer,
-                  vk::DeviceSize size) {
+  void copyBuffer(const vk::raii::Buffer &srcBuffer,
+                vk::raii::Buffer &dstBuffer, vk::DeviceSize size) {
     vk::CommandBufferAllocateInfo allocInfo{
         .commandPool = *commandPool,
         .level = vk::CommandBufferLevel::ePrimary,

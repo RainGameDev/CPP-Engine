@@ -23,20 +23,20 @@ void editorStartup(World &world) {
   auto &renderer = *world.get_resource<VulkanRenderingContext *>();
   auto &assetManager = *world.get_resource<AssetManager>();
 
-  auto *models = assetManager.getLoader<MeshAsset>();
+  auto *models =
+      dynamic_cast<ModelLoader *>(assetManager.getLoader<MeshAsset>());
   auto meshEntity = world.create_entity();
   world.add_component(
-      meshEntity, MeshComponent{.mesh = std::make_shared<Mesh>(
-                                    std::move(models->getAsset("mesh").mesh))});
+      meshEntity,
+      MeshComponent{.mesh = std::make_shared<Mesh>(
+                        models->duplicateMesh(models->getAsset("mesh").mesh))});
   world.add_component(meshEntity, TransformComponent{});
 
-  auto cameraEntity = world.create_entity();
-  world.get_storage<NameComponent>().get(cameraEntity)->setName("Camera");
-  world.add_component(cameraEntity, Camera{});
-  world.add_component(cameraEntity, TransformComponent{
-                                        .position = {0.0f, 0.0f, -3.0f},
-                                        .rotation = {-90.0f, 0.0f, 0.0f},
-                                    });
+  EditorCamera editorCam;
+  editorCam.cam = Camera{};
+  editorCam.transform.position = {0.0f, 0.0f, -3.0f};
+  editorCam.transform.rotation = {-90.0f, 0.0f, 0.0f};
+  world.add_resource<EditorCamera>(std::move(editorCam));
 
   auto lightEntity = world.create_entity();
   world.get_storage<NameComponent>().get(lightEntity)->setName("Light");
@@ -65,12 +65,8 @@ void debugUI(World &world) {
   ImGui::Begin("Debug", nullptr);
   ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
 
-  auto &camStorage = world.get_storage<Camera>();
-  if (camStorage.size() > 0) {
-    EntityId camId = camStorage.entity_at(0);
-    auto *cam = camStorage.get(camId);
-    auto *camTc = world.get_storage<TransformComponent>().get(camId);
-    glm::vec3 position = cam->getPosition(*camTc);
+  if (auto *editorCam = world.get_resource<EditorCamera>()) {
+    glm::vec3 position = editorCam->cam.getPosition(editorCam->transform);
     ImGui::Text("Position: %.2f, %.2f, %.2f", position.x, position.y,
                 position.z);
   }
@@ -128,7 +124,8 @@ void editorCameraUpdate(World &world) {
     return;
 
   static bool captured = false;
-  bool wantCapture = input->isKeybindActive("camera_hold");
+  bool wantCapture = status && status->isViewportHovered &&
+                     input->isKeybindActive("camera_hold");
 
   if (wantCapture != captured) {
     captured = wantCapture;
@@ -136,17 +133,13 @@ void editorCameraUpdate(World &world) {
                      captured ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
   }
 
-  auto &camStorage = world.get_storage<Camera>();
-  if (camStorage.size() == 0)
-    return;
-  EntityId camId = camStorage.entity_at(0);
-  auto *cam = camStorage.get(camId);
-  auto *camTc = world.get_storage<TransformComponent>().get(camId);
-  if (!cam || !camTc)
+  auto *editorCam = world.get_resource<EditorCamera>();
+  if (!editorCam)
     return;
 
   if (captured)
-    cam->processMouseMovement(*camTc, input->mouseDeltaX, input->mouseDeltaY);
+    editorCam->cam.processMouseMovement(editorCam->transform,
+                                        input->mouseDeltaX, input->mouseDeltaY);
 
   if (!captured)
     return;
@@ -156,7 +149,7 @@ void editorCameraUpdate(World &world) {
                        "move_forward", "move_backward");
 
   if (direction != glm::vec3(0.0f))
-    cam->processKeyboard(*camTc, direction, dt->value);
+    editorCam->cam.processKeyboard(editorCam->transform, direction, dt->value);
 }
 UPDATE_SYSTEM(editorCameraUpdate);
 

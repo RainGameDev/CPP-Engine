@@ -90,18 +90,25 @@ void Application::mainLoop() {
     glfwPollEvents();
     processInput(deltaTime);
 
-    auto &camStorage = world.get_storage<Camera>();
-    if (camStorage.size() == 0)
-      continue;
-    EntityId camId = camStorage.entity_at(0);
-    auto *cam = camStorage.get(camId);
-    auto *camTc = world.get_storage<TransformComponent>().get(camId);
-
     UniformBufferObject ubo{};
-    ubo.view = cam->getViewMatrix(*camTc);
-    ubo.pos = glm::vec4(cam->getPosition(*camTc), 0.0);
-    ubo.proj = cam->getProjectionMatrix(renderer.viewportExtent.width /
-                                        (float)renderer.viewportExtent.height);
+    if (auto *editorCam = world.get_resource<EditorCamera>()) {
+      ubo.view = editorCam->cam.getViewMatrix(editorCam->transform);
+      ubo.pos = glm::vec4(editorCam->cam.getPosition(editorCam->transform),
+                          0.0);
+      ubo.proj = editorCam->cam.getProjectionMatrix(
+          renderer.viewportExtent.width / (float)renderer.viewportExtent.height);
+    } else {
+      auto &camStorage = world.get_storage<Camera>();
+      if (camStorage.size() == 0)
+        continue;
+      EntityId camId = camStorage.entity_at(0);
+      auto *cam = camStorage.get(camId);
+      auto *camTc = world.get_storage<TransformComponent>().get(camId);
+      ubo.view = cam->getViewMatrix(*camTc);
+      ubo.pos = glm::vec4(cam->getPosition(*camTc), 0.0);
+      ubo.proj = cam->getProjectionMatrix(renderer.viewportExtent.width /
+                                          (float)renderer.viewportExtent.height);
+    }
     ubo.proj[1][1] *= -1;
 
     renderer.updateUniformBuffer(renderer.currentFrame, ubo);

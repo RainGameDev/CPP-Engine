@@ -12,3 +12,9 @@ struct Scene {
   std::unordered_map<std::type_index, std::unique_ptr<IComponentStorage>>
       storages;
 };
+
+inline Scene make_blank_scene(const std::string &name = "Scene") {
+  Scene scene;
+  scene.sceneName = name;
+  return scene;
+};

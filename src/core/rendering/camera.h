@@ -41,3 +41,11 @@ public:
     ImGui::DragFloat("FOV", &fov, 0.1f);
   }
 };
+
+// Editor tool-state camera: lives as a World resource rather than a scene
+// entity, so it survives scene resets and is never serialized to a scene
+// file.
+struct EditorCamera {
+  Camera cam;
+  TransformComponent transform;
+};
