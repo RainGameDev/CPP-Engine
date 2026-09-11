@@ -35,34 +35,6 @@
     },
     {
       "components": {
-        "Camera": {
-          "fov": 90.0
-        },
-        "NameComponent": {
-          "name": "Camera"
-        },
-        "TransformComponent": {
-          "position": [
-            -2.63150954246521,
-            3.61569881439209,
-            -3.7770044803619385
-          ],
-          "rotation": [
-            -57.400482177734375,
-            41.79988098144531,
-            0.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "id": 1
-    },
-    {
-      "components": {
         "LightComponent": {
           "color": [
             1.0,
@@ -94,7 +66,7 @@
           ]
         }
       },
-      "id": 2
+      "id": 1
     },
     {
       "components": {
@@ -127,7 +99,7 @@
           ]
         }
       },
-      "id": 3
+      "id": 2
     }
   ],
   "scene_name": "Scene"

@@ -2,6 +2,7 @@
 #include "assets/asset_manager.h"
 #include "assets/material_loader.h"
 #include "assets/model_loader.h"
+#include "assets/scene_asset.h"
 #include "ecs/components.h"
 #include "ecs/input_manager.h"
 #include "ecs/world.h"
@@ -45,9 +46,12 @@ void Application::run() {
   inputManager->addKeybind({GLFW_KEY_D, GLFW_REPEAT}, "move_right");
   inputManager->addKeybind({GLFW_KEY_SPACE, GLFW_REPEAT}, "move_up");
   inputManager->addKeybind({GLFW_KEY_LEFT_SHIFT, GLFW_REPEAT}, "move_down");
-  inputManager->addKeybind({GLFW_MOUSE_BUTTON_RIGHT, GLFW_REPEAT, InputDevice::Mouse}, "camera_hold");
+  inputManager->addKeybind(
+      {GLFW_MOUSE_BUTTON_RIGHT, GLFW_REPEAT, InputDevice::Mouse},
+      "camera_hold");
   assetManager.addLoader(std::make_unique<ShaderLoader>(renderer.device));
   assetManager.loadDirectory("assets/shaders");
+  assetManager.loadDirectory("assets/scenes");
   assetManager.addLoader(std::make_unique<TextureLoader>(
       renderer.device, renderer.physicalDevice, renderer.commandPool,
       renderer.queue, renderer.queueIndex));
@@ -62,6 +66,8 @@ void Application::run() {
       renderer.queue, assetManager, *renderer.descriptorSetLayout,
       *renderer.materialSetLayout));
   assetManager.loadDirectory("assets/models");
+  assetManager.addLoader(std::make_unique<SceneLoader>());
+  assetManager.loadDirectory("assets");
 
   schedule.run(Stage::Start, world);
 
@@ -93,10 +99,11 @@ void Application::mainLoop() {
     UniformBufferObject ubo{};
     if (auto *editorCam = world.get_resource<EditorCamera>()) {
       ubo.view = editorCam->cam.getViewMatrix(editorCam->transform);
-      ubo.pos = glm::vec4(editorCam->cam.getPosition(editorCam->transform),
-                          0.0);
+      ubo.pos =
+          glm::vec4(editorCam->cam.getPosition(editorCam->transform), 0.0);
       ubo.proj = editorCam->cam.getProjectionMatrix(
-          renderer.viewportExtent.width / (float)renderer.viewportExtent.height);
+          renderer.viewportExtent.width /
+          (float)renderer.viewportExtent.height);
     } else {
       auto &camStorage = world.get_storage<Camera>();
       if (camStorage.size() == 0)
@@ -106,8 +113,9 @@ void Application::mainLoop() {
       auto *camTc = world.get_storage<TransformComponent>().get(camId);
       ubo.view = cam->getViewMatrix(*camTc);
       ubo.pos = glm::vec4(cam->getPosition(*camTc), 0.0);
-      ubo.proj = cam->getProjectionMatrix(renderer.viewportExtent.width /
-                                          (float)renderer.viewportExtent.height);
+      ubo.proj =
+          cam->getProjectionMatrix(renderer.viewportExtent.width /
+                                   (float)renderer.viewportExtent.height);
     }
     ubo.proj[1][1] *= -1;
 

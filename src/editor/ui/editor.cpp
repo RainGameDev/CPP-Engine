@@ -2,6 +2,7 @@
 #include "assets/asset_manager.h"
 #include "assets/material_loader.h"
 #include "assets/model_loader.h"
+#include "assets/scene_asset.h"
 #include "assets/shader_loader.h"
 #include "assets/texture_loader.h"
 #include "ecs/components.h"
@@ -25,13 +26,66 @@
 #include <glm/gtc/quaternion.hpp>
 #include <iostream>
 #include <print>
+#include <sstream>
 #include <string>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
 static char sceneNameBuf[128] = "";
 bool openSaveAsPopup = false;
+bool openNewScenePopup = false;
 static std::string thumbnailDragAsset;
+
+enum class PendingSceneAction { None, New, Exit };
+static PendingSceneAction pendingSceneAction = PendingSceneAction::None;
+
+static std::vector<json> undoStack;
+static std::vector<json> redoStack;
+
+static void saveCurrentScene(World &world) {
+  json saved = save_world(world);
+  std::filesystem::create_directories("assets/scenes");
+  std::string path = "assets/scenes/" + world.currentScene.sceneName + ".scene.json";
+  std::ofstream file(path);
+  file << saved.dump(2);
+  std::print("Saved scene to {}\n", path);
+}
+
+static bool sceneIsEdited(World &world) {
+  std::string path = "assets/scenes/" + world.currentScene.sceneName + ".scene.json";
+  std::ifstream file(path);
+  if (!file.good())
+    return false;
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  json disk = json::parse(buffer.str(), nullptr, false);
+  if (disk.is_discarded())
+    return true;
+  return disk != save_world(world);
+}
+
+static void recordUndo(World &world) {
+  undoStack.push_back(save_world(world));
+  if (undoStack.size() > 64)
+    undoStack.erase(undoStack.begin());
+  redoStack.clear();
+}
+
+static void undoScene(World &world) {
+  if (undoStack.empty())
+    return;
+  redoStack.push_back(save_world(world));
+  restore_world(world, undoStack.back());
+  undoStack.pop_back();
+}
+
+static void redoScene(World &world) {
+  if (redoStack.empty())
+    return;
+  undoStack.push_back(save_world(world));
+  restore_world(world, redoStack.back());
+  redoStack.pop_back();
+}
 
 void topbar(World &world) {
   ImGuiViewport *mainViewport = ImGui::GetMainViewport();
@@ -43,7 +97,7 @@ void topbar(World &world) {
       ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking |
       ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-      ImGuiWindowFlags_NoNavFocus;
+      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -53,19 +107,18 @@ void topbar(World &world) {
 
   if (ImGui::BeginMenuBar()) {
     if (ImGui::BeginMenu("File")) {
-      // TODO: do a check on if the current scene has been edited by comparing
-      // it to it's save file (if it exists)
       if (ImGui::MenuItem("New")) {
-        world.currentScene = make_blank_scene();
+        if (sceneIsEdited(world)) {
+          pendingSceneAction = PendingSceneAction::New;
+          ImGui::OpenPopup("Unsaved Changes");
+        } else {
+          strncpy(sceneNameBuf, "Scene", sizeof(sceneNameBuf));
+          sceneNameBuf[sizeof(sceneNameBuf) - 1] = '\0';
+          openNewScenePopup = true;
+        }
       }
       if (ImGui::MenuItem("Save")) {
-        json saved = save_world(world);
-        std::filesystem::create_directories("assets");
-        std::string path =
-            "assets/" + world.currentScene.sceneName + ".scene.json";
-        std::ofstream file(path);
-        file << saved.dump(2);
-        std::print("Saved scene to {}\n", path);
+        saveCurrentScene(world);
       }
       if (ImGui::MenuItem("Save As")) {
         strncpy(sceneNameBuf, world.currentScene.sceneName.c_str(),
@@ -75,25 +128,73 @@ void topbar(World &world) {
       }
 
       ImGui::Separator();
-      // TODO: do a check on if the current scene has been edited by comparing
-      // it to it's save file (if it exists)
       if (ImGui::MenuItem("Exit")) {
-        auto *window = world.get_resource<GLFWwindow *>();
-        glfwSetWindowShouldClose(*window, GLFW_TRUE);
+        if (sceneIsEdited(world)) {
+          pendingSceneAction = PendingSceneAction::Exit;
+          ImGui::OpenPopup("Unsaved Changes");
+        } else {
+          auto *window = world.get_resource<GLFWwindow *>();
+          glfwSetWindowShouldClose(*window, GLFW_TRUE);
+        }
       }
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Edit")) {
-      if (ImGui::MenuItem("Undo", "Ctrl+Z")) { /* ... */
-      }
-      if (ImGui::MenuItem("Redo", "Ctrl+Y")) { /* ... */
-      }
+      if (ImGui::MenuItem("Undo", "Ctrl+Z"))
+        undoScene(world);
+      if (ImGui::MenuItem("Redo", "Ctrl+Y"))
+        redoScene(world);
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View")) {
       ImGui::EndMenu();
     }
     ImGui::EndMenuBar();
+  }
+
+  ImGuiIO &io = ImGui::GetIO();
+  if (!io.WantTextInput) {
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z))
+      undoScene(world);
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Y))
+      redoScene(world);
+  }
+
+  if (openNewScenePopup) {
+    ImGui::OpenPopup("New Scene");
+    openNewScenePopup = false;
+  }
+  ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                          ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+  if (ImGui::BeginPopupModal("New Scene", nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::Text("Scene name:");
+    ImGui::SetNextItemWidth(250);
+
+    bool enterPressed =
+        ImGui::InputText("##newscenename", sceneNameBuf, sizeof(sceneNameBuf),
+                         ImGuiInputTextFlags_EnterReturnsTrue);
+
+    ImGui::Spacing();
+
+    bool createPressed = ImGui::Button("Create", ImVec2(120, 0));
+    ImGui::SameLine();
+    bool cancelPressed = ImGui::Button("Cancel", ImVec2(120, 0));
+
+    if ((createPressed || enterPressed) && sceneNameBuf[0] != '\0') {
+      recordUndo(world);
+      world.currentScene = make_blank_scene(sceneNameBuf);
+      if (auto *editorState = world.get_resource<EditorStatus>())
+        editorState->selectedID = 0;
+      ImGui::CloseCurrentPopup();
+    }
+
+    if (cancelPressed) {
+      ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
   }
 
   if (openSaveAsPopup) {
@@ -121,13 +222,7 @@ void topbar(World &world) {
     if ((savePressed || enterPressed) && sceneNameBuf[0] != '\0') {
       world.currentScene.sceneName = sceneNameBuf;
 
-      json saved = save_world(world);
-      std::filesystem::create_directories("assets");
-      std::string path =
-          "assets/" + world.currentScene.sceneName + ".scene.json";
-      std::ofstream file(path);
-      file << saved.dump(2);
-      std::print("Saved scene to {}\n", path);
+      saveCurrentScene(world);
 
       ImGui::CloseCurrentPopup();
     }
@@ -137,6 +232,48 @@ void topbar(World &world) {
     }
 
     ImGui::EndPopup();
+  }
+
+  if (pendingSceneAction != PendingSceneAction::None) {
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
+                            ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+    if (ImGui::BeginPopupModal("Unsaved Changes", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+      ImGui::Text("Scene \"%s\" has unsaved changes.",
+                  world.currentScene.sceneName.c_str());
+      ImGui::Spacing();
+
+      bool savePressed = ImGui::Button("Save", ImVec2(120, 0));
+      ImGui::SameLine();
+      bool discardPressed = ImGui::Button("Discard", ImVec2(120, 0));
+      ImGui::SameLine();
+      bool cancelPressed = ImGui::Button("Cancel", ImVec2(120, 0));
+
+      if (savePressed)
+        saveCurrentScene(world);
+      if (discardPressed || savePressed) {
+        PendingSceneAction action = pendingSceneAction;
+        pendingSceneAction = PendingSceneAction::None;
+        ImGui::CloseCurrentPopup();
+
+        if (action == PendingSceneAction::New) {
+          strncpy(sceneNameBuf, "Scene", sizeof(sceneNameBuf));
+          sceneNameBuf[sizeof(sceneNameBuf) - 1] = '\0';
+          openNewScenePopup = true;
+        } else if (action == PendingSceneAction::Exit) {
+          auto *window = world.get_resource<GLFWwindow *>();
+          glfwSetWindowShouldClose(*window, GLFW_TRUE);
+        }
+      }
+
+      if (cancelPressed) {
+        pendingSceneAction = PendingSceneAction::None;
+        ImGui::CloseCurrentPopup();
+      }
+
+      ImGui::EndPopup();
+    }
   }
 
   ImGuiID dockspaceId = ImGui::GetID("MainDockSpace");
@@ -180,6 +317,7 @@ void hierarchy(World &world) {
   EditorStatus &editorState = *world.get_resource<EditorStatus>();
 
   if (ImGui::Button("New Entity")) {
+    recordUndo(world);
     world.create_entity();
   }
 
@@ -203,18 +341,89 @@ void inspector(World &world) {
   EditorStatus &editorState = *world.get_resource<EditorStatus>();
 
   if (editorState.selectedID) {
-    std::string name =
-        world.get_component<NameComponent>(editorState.selectedID)->name;
-    ImGui::Text("%s", name.c_str());
+    NameComponent *nameComp =
+        world.get_component<NameComponent>(editorState.selectedID);
+    if (!nameComp) {
+      editorState.selectedID = 0;
+    } else {
+      ImGui::Text("%s", nameComp->name.c_str());
 
-    world.inspect_entity(editorState.selectedID);
+      world.inspect_entity(editorState.selectedID);
 
-    ImGui::Separator();
+      ImGui::Separator();
+
+      static json cleanSnapshot;
+      static bool capturedClean = false;
+      static bool wasEditing = false;
+      const bool editing = ImGui::IsAnyItemActive() &&
+                           ImGui::GetCurrentContext()->ActiveIdWindow ==
+                               ImGui::GetCurrentWindow();
+      if (editing && !wasEditing && capturedClean) {
+        redoStack.clear();
+        undoStack.push_back(std::move(cleanSnapshot));
+        if (undoStack.size() > 64)
+          undoStack.erase(undoStack.begin());
+      }
+      wasEditing = editing;
+      if (!editing) {
+        cleanSnapshot = save_world(world);
+        capturedClean = true;
+      }
+    }
   }
 
   ImGui::End();
 }
 UPDATE_SYSTEM(inspector);
+
+/// Renders a single asset tile with generic sizing, positioning, selection,
+/// and name label. `drawThumbnail` only renders the type-specific preview.
+template <typename ThumbnailFn>
+static void drawAssetEntry(EditorStatus &editorState,
+                           const IAssetLoader::AssetEntry &entry,
+                           ThumbnailFn &&drawThumbnail) {
+  float textWidth = ImGui::CalcTextSize(entry.name.c_str()).x;
+  int textLines = std::max(1, (int)std::ceil(textWidth / 128.0f));
+  float textHeight = textLines * ImGui::GetTextLineHeightWithSpacing();
+  ImVec2 groupSize(128, 128 + textHeight);
+
+  bool isSelected = (editorState.selectedAsset == entry.name);
+
+  ImGui::PushID(entry.name.c_str());
+  ImVec2 startPos = ImGui::GetCursorScreenPos();
+
+  if (ImGui::Selectable("##sel", isSelected, ImGuiSelectableFlags_None,
+                        groupSize)) {
+    editorState.selectedAsset = entry.name;
+  }
+
+  ImGui::SetCursorScreenPos(startPos);
+  ImGui::BeginGroup();
+  drawThumbnail();
+  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 128);
+  ImGui::TextWrapped("%s", entry.name.c_str());
+  ImGui::PopTextWrapPos();
+  ImGui::EndGroup();
+  ImGui::PopID();
+}
+
+/// Draws a colored square thumbnail with a centered letter label.
+static void drawLabeledThumbnail(const char *label, ImU32 color) {
+  ImVec2 iconMin = ImGui::GetCursorScreenPos();
+  ImVec2 iconMax(iconMin.x + 128, iconMin.y + 128);
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
+  drawList->AddRectFilled(iconMin, iconMax, color, 4.0f);
+  ImVec2 textSize = ImGui::CalcTextSize(label);
+  ImVec2 textPos(iconMin.x + (128 - textSize.x) * 0.5f,
+                 iconMin.y + (128 - textSize.y) * 0.5f);
+  drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), label);
+  ImGui::Dummy(ImVec2(128, 128));
+}
+
+/// Generic placeholder thumbnail for asset types without a dedicated preview.
+static void drawPlaceholderThumbnail(const char *label) {
+  drawLabeledThumbnail(label, IM_COL32(70, 70, 70, 255));
+}
 
 void assets(World &world) {
   EditorStatus &editorState = *world.get_resource<EditorStatus>();
@@ -243,6 +452,9 @@ void assets(World &world) {
   if (ImGui::Button("Textures")) {
     editorState.selectedAssetLoader = assetManager.getLoader<TextureAsset>();
   }
+  if (ImGui::Button("Scenes")) {
+    editorState.selectedAssetLoader = assetManager.getLoader<SceneAsset>();
+  }
   ImGui::EndChild();
   ImGui::SameLine();
   ImGui::BeginChild("right pane", ImVec2(0, 0), true);
@@ -259,15 +471,6 @@ void assets(World &world) {
         entry.loaderFrom != editorState.selectedAssetLoader)
       continue;
 
-    float windowVisibleX2 =
-        ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
-    bool isSelected = (editorState.selectedAsset == entry.name);
-    ImVec2 startPos = ImGui::GetCursorScreenPos();
-    float textWidth = ImGui::CalcTextSize(entry.name.c_str()).x;
-    int textLines = std::max(1, (int)std::ceil(textWidth / 128.0f));
-    float textHeight = textLines * ImGui::GetTextLineHeightWithSpacing();
-    ImVec2 groupSize(128, 128 + textHeight);
-
     if (editorState.assetSearch != "" &&
         !entry.name.contains(editorState.assetSearch)) {
       continue;
@@ -278,92 +481,61 @@ void assets(World &world) {
       const TextureAsset &asset = texLoader->getAsset(entry.name);
       if (!asset.imguiDS)
         continue;
-
-      ImGui::PushID(entry.name.c_str());
-
-      if (ImGui::Selectable("##sel", isSelected, ImGuiSelectableFlags_None,
-                            groupSize)) {
-        editorState.selectedAsset = entry.name;
-      }
-
-      ImGui::SetCursorScreenPos(startPos);
-      ImGui::BeginGroup();
-      ImGui::Image((ImTextureID)asset.imguiDS, ImVec2(128, 128));
-      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 128);
-      ImGui::TextWrapped("%s", entry.name.c_str());
-      ImGui::PopTextWrapPos();
-      ImGui::EndGroup();
-
-      ImGui::PopID();
+      drawAssetEntry(editorState, entry, [&asset]() {
+        ImGui::Image((ImTextureID)asset.imguiDS, ImVec2(128, 128));
+      });
     }
 
-    else if (auto *modelLoader =
-                 dynamic_cast<ModelLoader *>(assetManager.getLoader<MeshAsset>());
-             entry.loaderFrom == assetManager.getLoader<MeshAsset>()) {
+    else if (entry.loaderFrom == assetManager.getLoader<MeshAsset>()) {
+      auto *modelLoader =
+          dynamic_cast<ModelLoader *>(assetManager.getLoader<MeshAsset>());
       MeshAsset &asset = modelLoader->getAsset(entry.name);
-      ImGui::PushID(entry.name.c_str());
+      drawAssetEntry(editorState, entry, [&asset, &entry, modelLoader]() {
+        ImGui::Image((ImTextureID)asset.previewTexture,
+                     ImVec2(MeshAsset::kPreviewSize, MeshAsset::kPreviewSize));
 
-      if (ImGui::Selectable("##sel", isSelected, ImGuiSelectableFlags_None,
-                            groupSize)) {
-        editorState.selectedAsset = entry.name;
-      }
-
-      ImGui::SetCursorScreenPos(startPos);
-      ImGui::BeginGroup();
-
-      ImGui::Image((ImTextureID)asset.previewTexture,
-                   ImVec2(MeshAsset::kPreviewSize, MeshAsset::kPreviewSize));
-
-      // Right-click + drag on the thumbnail rotates the model preview.
-      if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Right))
-        thumbnailDragAsset = entry.name;
-      if (thumbnailDragAsset == entry.name) {
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-          ImVec2 delta = ImGui::GetIO().MouseDelta;
-          asset.previewYaw += delta.x * 0.35f;
-          asset.previewPitch = glm::clamp(asset.previewPitch + delta.y * 0.35f,
-                                          -89.0f, 89.0f);
-          modelLoader->refreshPreview(entry.name);
-        } else {
-          thumbnailDragAsset.clear();
+        // Right-click + drag on the thumbnail rotates the model preview.
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Right))
+          thumbnailDragAsset = entry.name;
+        if (thumbnailDragAsset == entry.name) {
+          if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+            ImVec2 delta = ImGui::GetIO().MouseDelta;
+            asset.previewYaw += delta.x * 0.35f;
+            asset.previewPitch =
+                glm::clamp(asset.previewPitch + delta.y * 0.35f, -89.0f, 89.0f);
+            modelLoader->refreshPreview(entry.name);
+          } else {
+            thumbnailDragAsset.clear();
+          }
         }
-      }
-
-      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 128);
-      ImGui::TextWrapped("%s", entry.name.c_str());
-      ImGui::PopTextWrapPos();
-      ImGui::EndGroup();
-
-      ImGui::PopID();
+      });
     }
 
     else if (dynamic_cast<const ShaderLoader *>(entry.loaderFrom)) {
-      ImGui::PushID(entry.name.c_str());
-
-      if (ImGui::Selectable("##sel", isSelected, ImGuiSelectableFlags_None,
-                            groupSize)) {
-        editorState.selectedAsset = entry.name;
-      }
-
-      ImGui::SetCursorScreenPos(startPos);
-      ImGui::BeginGroup();
-      ImVec2 iconMin = ImGui::GetCursorScreenPos();
-      ImVec2 iconMax(iconMin.x + 128, iconMin.y + 128);
-      ImDrawList *drawList = ImGui::GetWindowDrawList();
-      drawList->AddRectFilled(iconMin, iconMax, IM_COL32(80, 60, 140, 255),
-                              4.0f);
-      ImVec2 textSize = ImGui::CalcTextSize("S");
-      ImVec2 textPos(iconMin.x + (128 - textSize.x) * 0.5f,
-                     iconMin.y + (128 - textSize.y) * 0.5f);
-      drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), "S");
-      ImGui::Dummy(ImVec2(128, 128));
-      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 128);
-      ImGui::TextWrapped("%s", entry.name.c_str());
-      ImGui::PopTextWrapPos();
-      ImGui::EndGroup();
-
-      ImGui::PopID();
+      drawAssetEntry(editorState, entry, []() {
+        drawLabeledThumbnail("S", IM_COL32(80, 60, 140, 255));
+      });
     }
+
+    else if (dynamic_cast<const MaterialLoader *>(entry.loaderFrom)) {
+      drawAssetEntry(editorState, entry, []() {
+        drawLabeledThumbnail("M", IM_COL32(0, 150, 140, 255));
+      });
+    }
+
+    else if (dynamic_cast<const SceneLoader *>(entry.loaderFrom)) {
+      drawAssetEntry(editorState, entry, []() {
+        drawLabeledThumbnail("S", IM_COL32(60, 120, 200, 255));
+      });
+    }
+
+    else {
+      drawAssetEntry(editorState, entry,
+                     []() { drawPlaceholderThumbnail("?"); });
+    }
+
+    float windowVisibleX2 =
+        ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
     float lastItemX2 = ImGui::GetItemRectMax().x;
     float nextItemX2 = lastItemX2 + ImGui::GetStyle().ItemSpacing.x + 128.0f;
     if (nextItemX2 < windowVisibleX2)
@@ -400,4 +572,3 @@ void viewport(World &world) {
   ImGui::PopStyleVar();
 }
 UPDATE_SYSTEM(viewport);
-
