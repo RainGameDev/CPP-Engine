@@ -6,13 +6,14 @@
 #include <glm/glm.hpp>
 
 Camera::Camera(glm::vec3 up)
-    : worldUp(up), movementSpeed(2.5f), mouseSensitivity(0.1f), fov(90.0f) {}
+    : worldUp(up), movementSpeed(2.5f), mouseSensitivity(0.1f), fov(90.0f),
+      front(0.0f, 0.0f, -1.0f), right(1.0f, 0.0f, 0.0f), up(0.0f, 1.0f, 0.0f) {}
 
 void Camera::processKeyboard(TransformComponent &transform,
                              glm::vec3 inputDirection, float deltaTime) {
-  glm::vec3 forward = glm::normalize(glm::vec3(front.x, 0.0f, front.z));
-  glm::vec3 movement = forward * inputDirection.z + right * inputDirection.x +
-                       worldUp * inputDirection.y;
+  updateCameraVectors(transform);
+  glm::vec3 movement =
+      front * inputDirection.z + right * inputDirection.x + up * inputDirection.y;
   transform.position += movement * movementSpeed * deltaTime;
 }
 

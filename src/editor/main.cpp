@@ -36,6 +36,7 @@ void editorStartup(World &world) {
   editorCam.cam = Camera{};
   editorCam.transform.position = {0.0f, 0.0f, -3.0f};
   editorCam.transform.rotation = {-90.0f, 0.0f, 0.0f};
+  editorCam.cam.updateCameraVectors(editorCam.transform);
   world.add_resource<EditorCamera>(std::move(editorCam));
 
   auto lightEntity = world.create_entity();

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "component.h"
-#include "components.h"
 #include "entity.h"
 #include "scene.h"
 #include <any>
@@ -13,11 +12,7 @@
 
 class World {
 public:
-  EntityId create_entity() {
-    auto id = currentScene.nextID++;
-    add_component(id, NameComponent{});
-    return id;
-  }
+  EntityId create_entity();
 
   /// Adds a resource of type T.
   template <typename T, typename... Args> void add_resource(Args &&...args) {
@@ -68,14 +63,7 @@ public:
 
   uint32_t entityCount() { return currentScene.nextID - 1; }
 
-  std::vector<EntityId> entities() {
-    auto &storage = get_storage<NameComponent>();
-    std::vector<EntityId> ids;
-    ids.reserve(storage.size());
-    for (std::size_t i = 0; i < storage.size(); ++i)
-      ids.push_back(storage.entity_at(i));
-    return ids;
-  }
+  std::vector<EntityId> entities();
 
   void inspect_entity(EntityId id) {
     for (auto &[_, storage] : currentScene.storages) {

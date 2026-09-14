@@ -45,14 +45,16 @@ static std::vector<json> redoStack;
 static void saveCurrentScene(World &world) {
   json saved = save_world(world);
   std::filesystem::create_directories("assets/scenes");
-  std::string path = "assets/scenes/" + world.currentScene.sceneName + ".scene.json";
+  std::string path =
+      "assets/scenes/" + world.currentScene.sceneName + ".scene.json";
   std::ofstream file(path);
   file << saved.dump(2);
   std::print("Saved scene to {}\n", path);
 }
 
 static bool sceneIsEdited(World &world) {
-  std::string path = "assets/scenes/" + world.currentScene.sceneName + ".scene.json";
+  std::string path =
+      "assets/scenes/" + world.currentScene.sceneName + ".scene.json";
   std::ifstream file(path);
   if (!file.good())
     return false;
@@ -376,16 +378,34 @@ void inspector(World &world) {
 }
 UPDATE_SYSTEM(inspector);
 
+static std::string wrapTextManual(const std::string &text, float wrapWidth) {
+  std::string result, currentLine;
+  size_t i = 0;
+  while (i < text.size()) {
+    std::string trial = currentLine + text[i];
+    if (!currentLine.empty() &&
+        ImGui::CalcTextSize(trial.c_str()).x > wrapWidth) {
+      result += currentLine;
+      result += '\n';
+      currentLine.clear();
+    } else {
+      currentLine += text[i];
+      i++;
+    }
+  }
+  result += currentLine;
+  return result;
+}
+
 /// Renders a single asset tile with generic sizing, positioning, selection,
-/// and name label. `drawThumbnail` only renders the type-specific preview.
+/// and name label. `groupHeight` is shared by every tile in the row so the
+/// tallest tile determines the row height. `drawThumbnail` only renders the
+/// type-specific preview.
 template <typename ThumbnailFn>
 static void drawAssetEntry(EditorStatus &editorState,
                            const IAssetLoader::AssetEntry &entry,
-                           ThumbnailFn &&drawThumbnail) {
-  float textWidth = ImGui::CalcTextSize(entry.name.c_str()).x;
-  int textLines = std::max(1, (int)std::ceil(textWidth / 128.0f));
-  float textHeight = textLines * ImGui::GetTextLineHeightWithSpacing();
-  ImVec2 groupSize(128, 128 + textHeight);
+                           float groupHeight, ThumbnailFn &&drawThumbnail) {
+  ImVec2 groupSize(128, groupHeight);
 
   bool isSelected = (editorState.selectedAsset == entry.name);
 
@@ -400,11 +420,20 @@ static void drawAssetEntry(EditorStatus &editorState,
   ImGui::SetCursorScreenPos(startPos);
   ImGui::BeginGroup();
   drawThumbnail();
-  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 128);
-  ImGui::TextWrapped("%s", entry.name.c_str());
-  ImGui::PopTextWrapPos();
+  // Draw the label to the left of the thumbnail's right edge, wrapping at the
+  // tile's width so it stays inside the 128px tile.
+  ImGui::SetCursorScreenPos(ImVec2(startPos.x, startPos.y + 128.0f));
+  std::string wrapped = wrapTextManual(entry.name, 128.0f);
+  ImGui::TextUnformatted(wrapped.c_str());
   ImGui::EndGroup();
   ImGui::PopID();
+}
+
+static float assetNameHeight(const IAssetLoader::AssetEntry &entry) {
+  std::string wrapped = wrapTextManual(entry.name, 128.0f);
+  int lines = 1 + (int)std::count(wrapped.begin(), wrapped.end(), '\n');
+
+  return lines * ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y;
 }
 
 /// Draws a colored square thumbnail with a centered letter label.
@@ -466,6 +495,7 @@ void assets(World &world) {
     editorState.assetSearch = nameBuf;
   }
   ImGui::Separator();
+  std::vector<const IAssetLoader::AssetEntry *> visibleEntries;
   for (auto &entry : allAssets) {
     if (editorState.selectedAssetLoader != nullptr &&
         entry.loaderFrom != editorState.selectedAssetLoader)
@@ -478,68 +508,108 @@ void assets(World &world) {
 
     if (auto *texLoader =
             dynamic_cast<const TextureLoader *>(entry.loaderFrom)) {
-      const TextureAsset &asset = texLoader->getAsset(entry.name);
-      if (!asset.imguiDS)
+      if (!texLoader->getAsset(entry.name).imguiDS)
         continue;
-      drawAssetEntry(editorState, entry, [&asset]() {
-        ImGui::Image((ImTextureID)asset.imguiDS, ImVec2(128, 128));
-      });
     }
+    visibleEntries.push_back(&entry);
+  }
 
-    else if (entry.loaderFrom == assetManager.getLoader<MeshAsset>()) {
-      auto *modelLoader =
-          dynamic_cast<ModelLoader *>(assetManager.getLoader<MeshAsset>());
-      MeshAsset &asset = modelLoader->getAsset(entry.name);
-      drawAssetEntry(editorState, entry, [&asset, &entry, modelLoader]() {
-        ImGui::Image((ImTextureID)asset.previewTexture,
-                     ImVec2(MeshAsset::kPreviewSize, MeshAsset::kPreviewSize));
+  float windowVisibleX2 =
+      ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+  float windowVisibleX1 =
+      ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMin().x;
+  float spacingX = ImGui::GetStyle().ItemSpacing.x;
 
-        // Right-click + drag on the thumbnail rotates the model preview.
-        if (ImGui::IsItemHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Right))
-          thumbnailDragAsset = entry.name;
-        if (thumbnailDragAsset == entry.name) {
-          if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-            ImVec2 delta = ImGui::GetIO().MouseDelta;
-            asset.previewYaw += delta.x * 0.35f;
-            asset.previewPitch =
-                glm::clamp(asset.previewPitch + delta.y * 0.35f, -89.0f, 89.0f);
-            modelLoader->refreshPreview(entry.name);
-          } else {
-            thumbnailDragAsset.clear();
+  // Group entries into rows based on their fixed 128px tile width.
+  std::vector<std::vector<const IAssetLoader::AssetEntry *>> rows;
+  rows.emplace_back();
+  float cursorX = windowVisibleX1;
+  for (auto *entry : visibleEntries) {
+    float tileEndX = cursorX + 128.0f;
+    if (!rows.back().empty() && tileEndX >= windowVisibleX2) {
+      rows.emplace_back();
+      cursorX = windowVisibleX1;
+    }
+    rows.back().push_back(entry);
+    cursorX += 128.0f + spacingX;
+  }
+
+  for (auto &row : rows) {
+    float rowTextHeight = 0.0f;
+    for (auto *entry : row)
+      rowTextHeight = std::max(rowTextHeight, assetNameHeight(*entry));
+    float groupHeight = 128.0f + rowTextHeight;
+
+    for (size_t i = 0; i < row.size(); i++) {
+      auto *entry = row[i];
+      if (auto *texLoader =
+              dynamic_cast<const TextureLoader *>(entry->loaderFrom)) {
+        const TextureAsset &asset = texLoader->getAsset(entry->name);
+        drawAssetEntry(editorState, *entry, groupHeight, [&asset]() {
+          ImGui::Image((ImTextureID)asset.imguiDS, ImVec2(128, 128));
+        });
+      } else if (entry->loaderFrom == assetManager.getLoader<MeshAsset>()) {
+        auto *modelLoader =
+            dynamic_cast<ModelLoader *>(assetManager.getLoader<MeshAsset>());
+        MeshAsset &asset = modelLoader->getAsset(entry->name);
+        drawAssetEntry(
+            editorState, *entry, groupHeight, [&asset, entry, modelLoader]() {
+              ImGui::Image(
+                  (ImTextureID)asset.previewTexture,
+                  ImVec2(MeshAsset::kPreviewSize, MeshAsset::kPreviewSize));
+
+              // Right-click + drag on the thumbnail rotates the
+              // model preview.
+              if (ImGui::IsItemHovered() &&
+                  ImGui::IsMouseDown(ImGuiMouseButton_Right))
+                thumbnailDragAsset = entry->name;
+              if (thumbnailDragAsset == entry->name) {
+                if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+                  ImVec2 delta = ImGui::GetIO().MouseDelta;
+                  asset.previewYaw += delta.x * 0.35f;
+                  asset.previewPitch = glm::clamp(
+                      asset.previewPitch + delta.y * 0.35f, -89.0f, 89.0f);
+                  modelLoader->refreshPreview(entry->name);
+                } else {
+                  thumbnailDragAsset.clear();
+                }
+              }
+            });
+      } else if (dynamic_cast<const ShaderLoader *>(entry->loaderFrom)) {
+        drawAssetEntry(editorState, *entry, groupHeight, []() {
+          drawLabeledThumbnail("S", IM_COL32(80, 60, 140, 255));
+        });
+      } else if (dynamic_cast<const MaterialLoader *>(entry->loaderFrom)) {
+        drawAssetEntry(editorState, *entry, groupHeight, []() {
+          drawLabeledThumbnail("M", IM_COL32(0, 150, 140, 255));
+        });
+      } else if (dynamic_cast<const SceneLoader *>(entry->loaderFrom)) {
+        drawAssetEntry(editorState, *entry, groupHeight, [=, &assetManager, &world]() {
+          drawLabeledThumbnail("S", IM_COL32(60, 120, 200, 255));
+
+          if (ImGui::BeginPopupContextItem("scene_context_menu")) {
+            if (ImGui::MenuItem("Load")) {
+              auto *sceneLoader = dynamic_cast<SceneLoader *>(
+                  assetManager.getLoader<SceneAsset>());
+              std::ifstream file(sceneLoader->getAsset(entry->name).path);
+              restore_world(world, json::parse(file));
+            }
+            if (ImGui::MenuItem("Rename")) { /* do something */
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Delete")) { /* do something */
+            }
+            ImGui::EndPopup();
           }
-        }
-      });
-    }
+        });
+      } else {
+        drawAssetEntry(editorState, *entry, groupHeight,
+                       []() { drawPlaceholderThumbnail("?"); });
+      }
 
-    else if (dynamic_cast<const ShaderLoader *>(entry.loaderFrom)) {
-      drawAssetEntry(editorState, entry, []() {
-        drawLabeledThumbnail("S", IM_COL32(80, 60, 140, 255));
-      });
+      if (i + 1 < row.size())
+        ImGui::SameLine();
     }
-
-    else if (dynamic_cast<const MaterialLoader *>(entry.loaderFrom)) {
-      drawAssetEntry(editorState, entry, []() {
-        drawLabeledThumbnail("M", IM_COL32(0, 150, 140, 255));
-      });
-    }
-
-    else if (dynamic_cast<const SceneLoader *>(entry.loaderFrom)) {
-      drawAssetEntry(editorState, entry, []() {
-        drawLabeledThumbnail("S", IM_COL32(60, 120, 200, 255));
-      });
-    }
-
-    else {
-      drawAssetEntry(editorState, entry,
-                     []() { drawPlaceholderThumbnail("?"); });
-    }
-
-    float windowVisibleX2 =
-        ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
-    float lastItemX2 = ImGui::GetItemRectMax().x;
-    float nextItemX2 = lastItemX2 + ImGui::GetStyle().ItemSpacing.x + 128.0f;
-    if (nextItemX2 < windowVisibleX2)
-      ImGui::SameLine();
   }
 
   ImGui::EndChild();

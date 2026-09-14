@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ecs/component.h"
+#include "ecs/component_registry.h"
 #include "ecs/components.h"
 #include <glm/glm.hpp>
 
@@ -13,9 +14,9 @@ private:
 
   float movementSpeed;
   float mouseSensitivity;
-  float fov;
 
 public:
+  float fov;
   Camera(glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f));
 
   void updateCameraVectors(const TransformComponent &transform);
@@ -34,13 +35,18 @@ public:
   }
   glm::vec3 getFront() const { return front; }
   float getZoom() const { return fov; }
+  void setZoom(float zoom) { fov = zoom; }
 
   void inspect(EntityId) {
     ImGui::SeparatorText("Camera");
 
     ImGui::DragFloat("FOV", &fov, 0.1f);
   }
+
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(Camera, fov);
 };
+
+REGISTER_COMPONENT(Camera);
 
 // Editor tool-state camera: lives as a World resource rather than a scene
 // entity, so it survives scene resets and is never serialized to a scene

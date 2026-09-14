@@ -1,11 +1,14 @@
 #pragma once
 
 #include "component.h"
+#include "ecs/component_registry.h"
+#include "ecs/json_glm.h"
 #include "imgui.h"
 #include "rendering/mesh.h"
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/glm.hpp>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 
 struct NameComponent : Component<NameComponent> {
@@ -14,6 +17,7 @@ struct NameComponent : Component<NameComponent> {
   void setName(const std::string &str) { name = str; }
 
   void inspect(EntityId) { ImGui::SeparatorText("Name"); }
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(NameComponent, name)
 };
 
 struct MeshComponent : Component<MeshComponent> {
@@ -21,6 +25,7 @@ struct MeshComponent : Component<MeshComponent> {
   glm::vec4 overrideColor{0.0f};
 
   void inspect(EntityId) {}
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(MeshComponent, overrideColor)
 };
 
 struct TransformComponent : Component<TransformComponent> {
@@ -44,8 +49,13 @@ struct TransformComponent : Component<TransformComponent> {
     ImGui::DragFloat3("Rotation", &rotation.x, 0.1f);
     ImGui::DragFloat3("Scale", &scale.x, 0.1f);
   }
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(TransformComponent, position, rotation, scale)
 };
 
 struct DeltaTime {
   float value{0.0f};
 };
+
+REGISTER_COMPONENT(NameComponent);
+REGISTER_COMPONENT(MeshComponent);
+REGISTER_COMPONENT(TransformComponent);
