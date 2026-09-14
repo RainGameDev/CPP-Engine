@@ -326,7 +326,8 @@ void hierarchy(World &world) {
 
   if (ImGui::Button("New Entity")) {
     recordUndo(world);
-    world.create_entity();
+    EntityId id = world.create_entity();
+    world.add_component(id, NameComponent{.name = "Entity"});
   }
 
   ImGui::Separator();
@@ -349,6 +350,13 @@ void inspector(World &world) {
   EditorStatus &editorState = *world.get_resource<EditorStatus>();
 
   if (editorState.selectedID) {
+    if (ImGui::Button("Add Component")) { /* ... */
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Delete")) { /* ... */
+    }
+    ImGui::Separator();
+
     NameComponent *nameComp =
         world.get_component<NameComponent>(editorState.selectedID);
     if (!nameComp) {
@@ -378,6 +386,10 @@ void inspector(World &world) {
         capturedClean = true;
       }
     }
+
+    float footerHeight = ImGui::GetFrameHeightWithSpacing();
+    ImGui::SetCursorPosY(ImGui::GetWindowHeight() - footerHeight);
+    ImGui::Separator();
   }
 
   ImGui::End();
