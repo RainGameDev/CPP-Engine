@@ -40,7 +40,7 @@ void editorStartup(World &world) {
   world.add_resource<EditorCamera>(std::move(editorCam));
 
   auto lightEntity = world.create_entity();
-  world.get_storage<NameComponent>().get(lightEntity)->setName("Light");
+  world.add_component(lightEntity, NameComponent{.name = "Light"});
   world.add_component(lightEntity,
                       LightComponent{.lightType = Directional{},
                                      .intensity = 1.0f,
@@ -50,9 +50,7 @@ void editorStartup(World &world) {
                       TransformComponent{.position = {5.0f, 1.0f, 5.0f}});
 
   auto debugIndicatorEntity = world.create_entity();
-  world.get_storage<NameComponent>()
-      .get(debugIndicatorEntity)
-      ->setName("Debug Indicator");
+  world.add_component(debugIndicatorEntity, NameComponent{.name = "Debug Indicator"});
   auto indicatorMesh = renderer->createIndicatorMesh();
   world.add_component(debugIndicatorEntity,
                       MeshComponent{.mesh = indicatorMesh});

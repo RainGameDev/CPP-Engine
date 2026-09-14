@@ -7,7 +7,7 @@
 #include <string>
 #include <unordered_map>
 
-class World;
+#include "world.h"
 
 class ComponentRegistry {
 public:
