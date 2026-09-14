@@ -22,17 +22,6 @@
 
 void editorStartup(World &world) {
   base_style = ImGui::GetStyle();
-  auto &renderer = *world.get_resource<VulkanRenderingContext *>();
-  auto &assetManager = *world.get_resource<AssetManager>();
-
-  auto *models =
-      dynamic_cast<ModelLoader *>(assetManager.getLoader<MeshAsset>());
-  auto meshEntity = world.create_entity();
-  world.add_component(
-      meshEntity,
-      MeshComponent{.mesh = std::make_shared<Mesh>(
-                        models->duplicateMesh(models->getAsset("mesh").mesh))});
-  world.add_component(meshEntity, TransformComponent{});
 
   EditorCamera editorCam;
   editorCam.cam = Camera{};
@@ -40,24 +29,6 @@ void editorStartup(World &world) {
   editorCam.transform.rotation = {-90.0f, 0.0f, 0.0f};
   editorCam.cam.updateCameraVectors(editorCam.transform);
   world.add_resource<EditorCamera>(std::move(editorCam));
-
-  auto lightEntity = world.create_entity();
-  world.add_component(lightEntity, NameComponent{.name = "Light"});
-  world.add_component(lightEntity,
-                      LightComponent{.lightType = Directional{},
-                                     .intensity = 1.0f,
-                                     .color = glm::vec3(1.0, 0.0, 0.0),
-                                     .isEmitting = true});
-  world.add_component(lightEntity,
-                      TransformComponent{.position = {5.0f, 1.0f, 5.0f}});
-
-  auto debugIndicatorEntity = world.create_entity();
-  world.add_component(debugIndicatorEntity,
-                      NameComponent{.name = "Debug Indicator"});
-  auto indicatorMesh = renderer->createIndicatorMesh();
-  world.add_component(debugIndicatorEntity,
-                      MeshComponent{.mesh = indicatorMesh});
-  world.add_component(debugIndicatorEntity, TransformComponent{});
 
   world.add_resource<bool>(false);
   world.add_resource<EditorStatus>();
