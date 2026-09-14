@@ -103,6 +103,8 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
   Query<MeshComponent, TransformComponent> meshQuery(*world);
   meshQuery.for_each(
       [&](EntityId id, MeshComponent &mc, TransformComponent &tc) {
+        if (!mc.mesh)
+          return;
         drawList.push_back({&mc, &tc, static_cast<uint32_t>(drawList.size())});
       });
 
@@ -136,10 +138,10 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
       uint32_t dynamicOffset =
           static_cast<uint32_t>(transformStride * entry.index);
 
-      cmd.setViewport(
-          0,
-          vk::Viewport(0.0f, 0.0f, static_cast<float>(viewportExtent.width),
-                       static_cast<float>(viewportExtent.height), 0.0f, 1.0f));
+      cmd.setViewport(0, vk::Viewport(0.0f, 0.0f,
+                                      static_cast<float>(viewportExtent.width),
+                                      static_cast<float>(viewportExtent.height),
+                                      0.0f, 1.0f));
       cmd.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), viewportExtent));
 
       if (mesh->material != nullptr) {
@@ -214,25 +216,23 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
 
     cmd.beginRendering(imguiRenderingInfo);
 
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *cmd,
-                                    VK_NULL_HANDLE);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *cmd, VK_NULL_HANDLE);
 
     cmd.endRendering();
 
-    transition_image_layout(
-        cmd, imageIndex, vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageLayout::ePresentSrcKHR,
-        vk::AccessFlagBits2::eColorAttachmentWrite, {},
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits2::eBottomOfPipe);
+    transition_image_layout(cmd, imageIndex,
+                            vk::ImageLayout::eColorAttachmentOptimal,
+                            vk::ImageLayout::ePresentSrcKHR,
+                            vk::AccessFlagBits2::eColorAttachmentWrite, {},
+                            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                            vk::PipelineStageFlagBits2::eBottomOfPipe);
   } else {
-    transition_image_layout(cmd, *viewportColorImage,
-                            vk::ImageLayout::eShaderReadOnlyOptimal,
-                            vk::ImageLayout::eTransferSrcOptimal,
-                            vk::AccessFlagBits2::eShaderRead,
-                            vk::AccessFlagBits2::eTransferRead,
-                            vk::PipelineStageFlagBits2::eFragmentShader,
-                            vk::PipelineStageFlagBits2::eTransfer);
+    transition_image_layout(
+        cmd, *viewportColorImage, vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eTransferSrcOptimal, vk::AccessFlagBits2::eShaderRead,
+        vk::AccessFlagBits2::eTransferRead,
+        vk::PipelineStageFlagBits2::eFragmentShader,
+        vk::PipelineStageFlagBits2::eTransfer);
 
     transition_image_layout(cmd, imageIndex, vk::ImageLayout::eUndefined,
                             vk::ImageLayout::eTransferDstOptimal, {},
@@ -261,13 +261,13 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
                            .layerCount = 1},
         .dstOffsets = dstOffsets};
 
-    cmd.blitImage(*viewportColorImage,
-                            vk::ImageLayout::eTransferSrcOptimal,
-                            swapChainImages[imageIndex],
-                            vk::ImageLayout::eTransferDstOptimal, blitRegion,
-                            vk::Filter::eLinear);
+    cmd.blitImage(*viewportColorImage, vk::ImageLayout::eTransferSrcOptimal,
+                  swapChainImages[imageIndex],
+                  vk::ImageLayout::eTransferDstOptimal, blitRegion,
+                  vk::Filter::eLinear);
 
-    transition_image_layout(cmd, imageIndex, vk::ImageLayout::eTransferDstOptimal,
+    transition_image_layout(cmd, imageIndex,
+                            vk::ImageLayout::eTransferDstOptimal,
                             vk::ImageLayout::eColorAttachmentOptimal,
                             vk::AccessFlagBits2::eTransferWrite,
                             vk::AccessFlagBits2::eColorAttachmentWrite,
@@ -292,17 +292,16 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
 
     cmd.beginRendering(imguiRenderingInfo);
 
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *cmd,
-                                    VK_NULL_HANDLE);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *cmd, VK_NULL_HANDLE);
 
     cmd.endRendering();
 
-    transition_image_layout(
-        cmd, imageIndex, vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageLayout::ePresentSrcKHR,
-        vk::AccessFlagBits2::eColorAttachmentWrite, {},
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        vk::PipelineStageFlagBits2::eBottomOfPipe);
+    transition_image_layout(cmd, imageIndex,
+                            vk::ImageLayout::eColorAttachmentOptimal,
+                            vk::ImageLayout::ePresentSrcKHR,
+                            vk::AccessFlagBits2::eColorAttachmentWrite, {},
+                            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                            vk::PipelineStageFlagBits2::eBottomOfPipe);
   }
 
   cmd.end();
