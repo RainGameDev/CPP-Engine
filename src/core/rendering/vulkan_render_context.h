@@ -107,6 +107,8 @@ public:
   vk::Extent2D viewportExtent{800, 600};
   vk::Extent2D pendingViewportExtent{800, 600};
 
+  vk::DeviceSize transformStride = sizeof(TransformUBO);
+
   uint32_t currentFrame = 0;
 
   bool editorMode = false;

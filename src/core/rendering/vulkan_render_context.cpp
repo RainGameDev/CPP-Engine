@@ -58,7 +58,7 @@ void VulkanRenderingContext::updateUniformBuffer(uint32_t frame) {
 
 void VulkanRenderingContext::ensureTransformBuffer(uint32_t frame,
                                                    uint32_t meshCount) {
-  vk::DeviceSize required = sizeof(TransformUBO) * meshCount;
+  vk::DeviceSize required = transformStride * meshCount;
   if (required <= transformBufferSizes[frame])
     return;
 
@@ -88,7 +88,7 @@ void VulkanRenderingContext::ensureTransformBuffer(uint32_t frame,
 
   vk::DescriptorBufferInfo bufferInfo{.buffer = *transformBuffers[frame].buffer,
                                       .offset = 0,
-                                      .range = sizeof(TransformUBO)};
+                                      .range = transformStride};
 
   vk::WriteDescriptorSet write{.dstSet = descriptorSets[frame],
                                .dstBinding = 1,

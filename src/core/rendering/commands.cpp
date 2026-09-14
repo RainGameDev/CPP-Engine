@@ -113,7 +113,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
       TransformUBO tu{.pos = glm::vec4(entry.tc->position, 0.0f),
                       .rotation = glm::vec4(entry.tc->rotation, 0.0f),
                       .scale = glm::vec4(entry.tc->scale, 0.0f)};
-      vk::DeviceSize offset = sizeof(TransformUBO) * entry.index;
+      vk::DeviceSize offset = transformStride * entry.index;
       memcpy(static_cast<uint8_t *>(transformBuffers[currentFrame].mapped) +
                  offset,
              &tu, sizeof(tu));
@@ -134,7 +134,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
       cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
 
       uint32_t dynamicOffset =
-          static_cast<uint32_t>(sizeof(TransformUBO) * entry.index);
+          static_cast<uint32_t>(transformStride * entry.index);
 
       cmd.setViewport(
           0,

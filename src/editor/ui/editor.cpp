@@ -13,6 +13,7 @@
 #include "ecs/system_registry.h"
 #include "ecs/world.h"
 #include "imgui_impl_vulkan.h"
+#include "imgui_vulkan.h"
 #include "rendering/vulkan_render_context.h"
 
 #include "imgui.h"
@@ -32,6 +33,7 @@
 #include <vulkan/vulkan_raii.hpp>
 
 static char sceneNameBuf[128] = "";
+ImGuiStyle base_style;
 bool openSaveAsPopup = false;
 bool openNewScenePopup = false;
 static std::string thumbnailDragAsset;
@@ -149,6 +151,10 @@ void topbar(World &world) {
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View")) {
+      ImGui::SliderFloat("UI Scale", &ui_scale, 0.25f, 3.0f);
+      ImGuiStyle &style = ImGui::GetStyle();
+      style = base_style;
+      style.ScaleAllSizes(ui_scale);
       ImGui::EndMenu();
     }
     ImGui::EndMenuBar();
@@ -584,24 +590,25 @@ void assets(World &world) {
           drawLabeledThumbnail("M", IM_COL32(0, 150, 140, 255));
         });
       } else if (dynamic_cast<const SceneLoader *>(entry->loaderFrom)) {
-        drawAssetEntry(editorState, *entry, groupHeight, [=, &assetManager, &world]() {
-          drawLabeledThumbnail("S", IM_COL32(60, 120, 200, 255));
+        drawAssetEntry(
+            editorState, *entry, groupHeight, [=, &assetManager, &world]() {
+              drawLabeledThumbnail("S", IM_COL32(60, 120, 200, 255));
 
-          if (ImGui::BeginPopupContextItem("scene_context_menu")) {
-            if (ImGui::MenuItem("Load")) {
-              auto *sceneLoader = dynamic_cast<SceneLoader *>(
-                  assetManager.getLoader<SceneAsset>());
-              std::ifstream file(sceneLoader->getAsset(entry->name).path);
-              restore_world(world, json::parse(file));
-            }
-            if (ImGui::MenuItem("Rename")) { /* do something */
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Delete")) { /* do something */
-            }
-            ImGui::EndPopup();
-          }
-        });
+              if (ImGui::BeginPopupContextItem("scene_context_menu")) {
+                if (ImGui::MenuItem("Load")) {
+                  auto *sceneLoader = dynamic_cast<SceneLoader *>(
+                      assetManager.getLoader<SceneAsset>());
+                  std::ifstream file(sceneLoader->getAsset(entry->name).path);
+                  restore_world(world, json::parse(file));
+                }
+                if (ImGui::MenuItem("Rename")) { /* do something */
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Delete")) { /* do something */
+                }
+                ImGui::EndPopup();
+              }
+            });
       } else {
         drawAssetEntry(editorState, *entry, groupHeight,
                        []() { drawPlaceholderThumbnail("?"); });

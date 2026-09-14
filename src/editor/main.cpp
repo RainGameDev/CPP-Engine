@@ -12,6 +12,7 @@
 
 #include "imgui.h"
 #include "ui/editor.h"
+#include "ui/imgui_vulkan.h"
 #include <GLFW/glfw3.h>
 #include <cstdlib>
 #include <exception>
@@ -20,6 +21,7 @@
 #include <print>
 
 void editorStartup(World &world) {
+  base_style = ImGui::GetStyle();
   auto &renderer = *world.get_resource<VulkanRenderingContext *>();
   auto &assetManager = *world.get_resource<AssetManager>();
 
@@ -50,7 +52,8 @@ void editorStartup(World &world) {
                       TransformComponent{.position = {5.0f, 1.0f, 5.0f}});
 
   auto debugIndicatorEntity = world.create_entity();
-  world.add_component(debugIndicatorEntity, NameComponent{.name = "Debug Indicator"});
+  world.add_component(debugIndicatorEntity,
+                      NameComponent{.name = "Debug Indicator"});
   auto indicatorMesh = renderer->createIndicatorMesh();
   world.add_component(debugIndicatorEntity,
                       MeshComponent{.mesh = indicatorMesh});
@@ -158,6 +161,7 @@ int main() {
     app.setEditorMode(true);
     app.add_startup_system(editorStartup);
     app.addUI([&world = app.getWorld()]() { debugUI(world); }, UIMode::Both);
+
     app.run();
   } catch (const std::exception &e) {
     std::print("Err: {}\n", e.what());

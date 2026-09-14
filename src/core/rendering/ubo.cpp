@@ -29,7 +29,7 @@ void VulkanRenderingContext::createUniformBuffers() {
         uniformBuffers[i].memory.mapMemory(0, bufferSize);
   }
 
-  vk::DeviceSize transformSize = sizeof(TransformUBO);
+  vk::DeviceSize transformSize = transformStride;
   for (size_t i = 0; i < maxConcurrentFrames; i++) {
     transformBuffers[i].buffer = vk::raii::Buffer(device, {.size = transformSize,
                                    .usage = vk::BufferUsageFlagBits::eUniformBuffer,
@@ -143,7 +143,7 @@ void VulkanRenderingContext::createDescriptorSets() {
     vk::DescriptorBufferInfo transformBufferInfo{
         .buffer = *transformBuffers[i].buffer,
         .offset = 0,
-        .range = sizeof(TransformUBO)};
+        .range = transformStride};
 
     vk::DescriptorBufferInfo lightBufferInfo{
         .buffer = *lightBuffers[i].buffer,

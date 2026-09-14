@@ -65,6 +65,9 @@ void VulkanRenderingContext::pickPhysicalDevice() {
     throw std::runtime_error("failed to find a suitable GPU!");
   }
   physicalDevice = *devIter;
+
+  auto align = physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
+  transformStride = (sizeof(TransformUBO) + align - 1) & ~(align - 1);
 }
 
 void VulkanRenderingContext::createLogicalDevice() {
