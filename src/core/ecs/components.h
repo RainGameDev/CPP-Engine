@@ -17,7 +17,9 @@ struct NameComponent : Component<NameComponent> {
 
   void setName(const std::string &str) { name = str; }
 
-  void inspect(World &, EntityId) { ImGui::SeparatorText("Name"); }
+  static constexpr bool showInspectorHeader() { return false; }
+
+  void inspect(World &, EntityId) {}
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(NameComponent, name)
 };
 
@@ -37,7 +39,6 @@ struct TransformComponent : Component<TransformComponent> {
   }
 
   void inspect(World &, EntityId) {
-    ImGui::SeparatorText("Transform");
     ImGui::DragFloat3("Position", &position.x, 0.1f);
     ImGui::DragFloat3("Rotation", &rotation.x, 0.1f);
     ImGui::DragFloat3("Scale", &scale.x, 0.1f);

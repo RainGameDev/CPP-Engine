@@ -5,9 +5,16 @@
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <typeindex>
+#include <typeinfo>
 #include <unordered_map>
 
 #include "world.h"
+
+inline std::unordered_map<std::type_index, std::string> &componentTypeNames() {
+  static std::unordered_map<std::type_index, std::string> names;
+  return names;
+}
 
 class ComponentRegistry {
 public:
@@ -25,6 +32,7 @@ public:
   }
 
   template <ComponentType T> void register_component(std::string name) {
+    componentTypeNames()[std::type_index(typeid(T))] = name;
     Entry entry;
     entry.contains = [](World &world, EntityId id) {
       return world.get_storage<T>().contains(id);

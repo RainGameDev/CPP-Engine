@@ -61,8 +61,8 @@ void lightDebugSync(World &world) {
   auto &tcStorage = world.get_storage<TransformComponent>();
   auto &mcStorage = world.get_storage<MeshComponent>();
 
-  EntityId lightId = 0;
-  EntityId indicatorId = 0;
+  EntityId lightId = NONE;
+  EntityId indicatorId = NONE;
 
   for (std::size_t i = 0; i < nameStorage.size(); ++i) {
     EntityId id = nameStorage.entity_at(i);
@@ -73,7 +73,7 @@ void lightDebugSync(World &world) {
       indicatorId = id;
   }
 
-  if (lightId && indicatorId) {
+  if (lightId != NONE && indicatorId != NONE) {
     auto *lightTc = tcStorage.get(lightId);
     auto *lightLc = lightStorage.get(lightId);
     auto *indTc = tcStorage.get(indicatorId);

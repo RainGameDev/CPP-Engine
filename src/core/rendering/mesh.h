@@ -109,8 +109,6 @@ struct MeshComponent : Component<MeshComponent> {
   glm::vec4 overrideColor{0.0f};
 
   void inspect(World &world, EntityId) {
-    ImGui::SeparatorText("Mesh");
-
     auto *assetManager = world.get_resource<AssetManager>();
     auto *modelLoader =
         assetManager ? assetManager->getLoader<MeshAsset>() : nullptr;

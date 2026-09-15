@@ -195,7 +195,7 @@ void topbar(World &world) {
       recordUndo(world);
       world.currentScene = make_blank_scene(sceneNameBuf);
       if (auto *editorState = world.get_resource<EditorStatus>())
-        editorState->selectedID = 0;
+        editorState->selectedID = NONE;
       ImGui::CloseCurrentPopup();
     }
 
@@ -350,7 +350,7 @@ void inspector(World &world) {
 
   EditorStatus &editorState = *world.get_resource<EditorStatus>();
 
-  if (editorState.selectedID) {
+  if (editorState.selectedID != NONE) {
     if (ImGui::Button("Add Component")) {
       ImGui::OpenPopup("ComponentAddPopup");
     }
@@ -385,7 +385,7 @@ void inspector(World &world) {
     NameComponent *nameComp =
         world.get_component<NameComponent>(editorState.selectedID);
     if (!nameComp) {
-      editorState.selectedID = 0;
+      editorState.selectedID = NONE;
     } else {
       ImGui::Text("%s", nameComp->name.c_str());
 

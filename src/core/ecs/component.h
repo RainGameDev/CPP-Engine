@@ -1,15 +1,24 @@
 #pragma once
 
 #include "entity.h"
+#include "imgui.h"
 #include <algorithm>
 #include <concepts>
+#include <string>
+#include <typeindex>
+#include <typeinfo>
+#include <unordered_map>
 #include <vector>
 
 class World;
 
+std::unordered_map<std::type_index, std::string> &componentTypeNames();
+
 struct ComponentTag {};
 
-template <typename Derived> struct Component : ComponentTag {};
+template <typename Derived> struct Component : ComponentTag {
+  static constexpr bool showInspectorHeader() { return true; }
+};
 
 template <typename T>
 concept ComponentType =
@@ -25,8 +34,6 @@ struct IComponentStorage {
 };
 
 template <ComponentType T> class ComponentStorage : public IComponentStorage {
-  static constexpr std::uint32_t NONE = static_cast<std::uint32_t>(-1);
-
 public:
   /// Insert Component T for entity ID
   T &insert(EntityId id, T value) {
@@ -72,8 +79,15 @@ public:
   }
 
   void inspect(World &world, EntityId id) override {
-    if (T *comp = get(id))
+    if (T *comp = get(id)) {
+      if constexpr (T::showInspectorHeader()) {
+        auto &names = componentTypeNames();
+        auto it = names.find(std::type_index(typeid(T)));
+        if (it != names.end())
+          ImGui::SeparatorText(it->second.c_str());
+      }
       comp->inspect(world, id);
+    }
   }
 
   std::size_t size() const { return dense.size(); }

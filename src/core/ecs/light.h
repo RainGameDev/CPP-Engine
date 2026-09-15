@@ -76,7 +76,6 @@ public:
   bool isEmitting;
 
   void inspect(World &, EntityId) {
-    ImGui::SeparatorText("Light");
     ImGui::ColorEdit3("Color", &color.x);
     ImGui::DragFloat("Intensity", &intensity, 0.1f, 0.0f, 100.0f);
     ImGui::Checkbox("Emitting", &isEmitting);

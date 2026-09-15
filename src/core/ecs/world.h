@@ -67,7 +67,7 @@ public:
     return *static_cast<ComponentStorage<T> *>(it->second.get());
   }
 
-  uint32_t entityCount() { return currentScene.nextID - 1; }
+  uint32_t entityCount() { return currentScene.nextID; }
 
   std::vector<EntityId> entities();
 

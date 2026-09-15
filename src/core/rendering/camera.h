@@ -38,8 +38,6 @@ public:
   void setZoom(float zoom) { fov = zoom; }
 
   void inspect(World &, EntityId) {
-    ImGui::SeparatorText("Camera");
-
     ImGui::DragFloat("FOV", &fov, 0.1f);
   }
 

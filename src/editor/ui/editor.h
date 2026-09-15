@@ -3,7 +3,7 @@
 #include "ecs/entity.h"
 #include <string>
 struct EditorStatus {
-  EntityId selectedID;
+  EntityId selectedID = NONE;
   IAssetLoader *selectedAssetLoader = nullptr;
   bool isViewportHovered = false;
   std::string assetSearch;
