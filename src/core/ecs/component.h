@@ -83,8 +83,28 @@ public:
       if constexpr (T::showInspectorHeader()) {
         auto &names = componentTypeNames();
         auto it = names.find(std::type_index(typeid(T)));
-        if (it != names.end())
-          ImGui::SeparatorText(it->second.c_str());
+        if (it != names.end()) {
+          const char *label = it->second.c_str();
+          const float buttonWidth = 20.0f;
+          ImGui::AlignTextToFramePadding();
+          ImVec2 pos = ImGui::GetCursorScreenPos();
+          ImVec2 labelSize = ImGui::CalcTextSize(label);
+          float availWidth = ImGui::GetContentRegionAvail().x;
+          ImGui::GetWindowDrawList()->AddLine(
+              ImVec2(pos.x + labelSize.x + 6.0f, pos.y + labelSize.y / 2.0f),
+              ImVec2(pos.x + availWidth - buttonWidth,
+                     pos.y + labelSize.y / 2.0f),
+              ImGui::GetColorU32(ImGuiCol_Separator));
+          ImGui::TextUnformatted(label);
+          ImGui::SameLine(availWidth - buttonWidth);
+          ImGui::PushID(label);
+          bool clicked = ImGui::Button("X", ImVec2(buttonWidth, 0));
+          ImGui::PopID();
+          if (clicked) {
+            remove(id);
+            return;
+          }
+        }
       }
       comp->inspect(world, id);
     }

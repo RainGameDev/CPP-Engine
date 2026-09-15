@@ -20,6 +20,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -34,6 +35,8 @@
 #include <vulkan/vulkan_raii.hpp>
 
 static char sceneNameBuf[128] = "";
+static char nameEntityBuf[128] = "";
+
 ImGuiStyle base_style;
 bool openSaveAsPopup = false;
 bool openNewScenePopup = false;
@@ -288,28 +291,31 @@ void topbar(World &world) {
   ImGuiID dockspaceId = ImGui::GetID("MainDockSpace");
   ImGui::DockSpace(dockspaceId, ImVec2(0, 0));
 
-  static bool dockspaceInitialized = false;
-  if (!dockspaceInitialized) {
-    dockspaceInitialized = true;
+  if (!std::filesystem::exists("imgui.ini")) {
 
-    ImGui::DockBuilderRemoveNode(dockspaceId);
-    ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
-    ImGui::DockBuilderSetNodeSize(dockspaceId, mainViewport->Size);
+    static bool dockspaceInitialized = false;
+    if (!dockspaceInitialized) {
+      dockspaceInitialized = true;
 
-    ImGuiID right;
-    ImGuiID bottom;
-    ImGuiID central;
-    ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, &right,
-                                &central);
-    ImGui::DockBuilderSplitNode(central, ImGuiDir_Down, 0.25f, &bottom,
-                                &central);
+      ImGui::DockBuilderRemoveNode(dockspaceId);
+      ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+      ImGui::DockBuilderSetNodeSize(dockspaceId, mainViewport->Size);
 
-    ImGui::DockBuilderDockWindow("Assets", bottom);
-    ImGui::DockBuilderDockWindow("Hierarchy", right);
-    ImGui::DockBuilderDockWindow("Inspector", right);
-    ImGui::DockBuilderDockWindow("Viewport", central);
+      ImGuiID right;
+      ImGuiID bottom;
+      ImGuiID central;
+      ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, &right,
+                                  &central);
+      ImGui::DockBuilderSplitNode(central, ImGuiDir_Down, 0.25f, &bottom,
+                                  &central);
 
-    ImGui::DockBuilderFinish(dockspaceId);
+      ImGui::DockBuilderDockWindow("Assets", bottom);
+      ImGui::DockBuilderDockWindow("Hierarchy", right);
+      ImGui::DockBuilderDockWindow("Inspector", right);
+      ImGui::DockBuilderDockWindow("Viewport", central);
+
+      ImGui::DockBuilderFinish(dockspaceId);
+    }
   }
 
   ImGui::End();
@@ -387,11 +393,21 @@ void inspector(World &world) {
     if (!nameComp) {
       editorState.selectedID = NONE;
     } else {
-      ImGui::Text("%s", nameComp->name.c_str());
+
+      auto name = nameComp->name.c_str();
+      ImGui::AlignTextToFramePadding();
+      ImGui::Text("%s", name);
+      ImGui::SameLine();
+      bool enterPressed =
+          ImGui::InputText("##EntityName", nameEntityBuf, sizeof(nameEntityBuf),
+                           ImGuiInputTextFlags_EnterReturnsTrue);
+
+      if (enterPressed) {
+        nameComp->setName(nameEntityBuf);
+        strncpy(nameEntityBuf, "", sizeof(nameEntityBuf));
+      }
 
       world.inspect_entity(editorState.selectedID);
-
-      ImGui::Separator();
 
       static json cleanSnapshot;
       static bool capturedClean = false;
@@ -463,8 +479,6 @@ static void drawAssetEntry(EditorStatus &editorState,
   ImGui::SetCursorScreenPos(startPos);
   ImGui::BeginGroup();
   drawThumbnail();
-  // Draw the label to the left of the thumbnail's right edge, wrapping at the
-  // tile's width so it stays inside the 128px tile.
   ImGui::SetCursorScreenPos(ImVec2(startPos.x, startPos.y + 128.0f));
   std::string wrapped = wrapTextManual(entry.name, 128.0f);
   ImGui::TextUnformatted(wrapped.c_str());
