@@ -1,5 +1,6 @@
 #pragma once
 
+#include "assets/handle.h"
 #include "component.h"
 #include "ecs/component_registry.h"
 #include "ecs/json_glm.h"
@@ -11,6 +12,8 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
+struct MeshAsset; // forward declaration — Handle<MeshAsset> only stores a pointer
+
 struct NameComponent : Component<NameComponent> {
   std::string name{"Entity"};
 
@@ -21,11 +24,11 @@ struct NameComponent : Component<NameComponent> {
 };
 
 struct MeshComponent : Component<MeshComponent> {
-  std::shared_ptr<Mesh> mesh;
+  Handle<MeshAsset> mesh;
   glm::vec4 overrideColor{0.0f};
 
   void inspect(EntityId) {}
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(MeshComponent, overrideColor)
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(MeshComponent, mesh, overrideColor)
 };
 
 struct TransformComponent : Component<TransformComponent> {

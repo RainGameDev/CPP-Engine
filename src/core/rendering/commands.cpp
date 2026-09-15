@@ -1,4 +1,5 @@
 #include "assets/material_loader.h"
+#include "assets/model_loader.h"
 #include "ecs/components.h"
 #include "ecs/query.h"
 #include "imgui.h"
@@ -122,7 +123,9 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
     }
 
     for (auto &entry : drawList) {
-      auto *mesh = entry.mc->mesh.get();
+      if (!entry.mc->mesh)
+        continue;
+      auto *mesh = &entry.mc->mesh->mesh;
 
       ShaderKey key;
       if (mesh->material != nullptr) {

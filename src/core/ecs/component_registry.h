@@ -12,7 +12,9 @@
 class ComponentRegistry {
 public:
   struct Entry {
-    // Returns false if this entity doesn't have the component.
+    std::function<bool(World &, EntityId)> contains;
+    std::function<void(World &, EntityId)> add_component;
+    std::function<void(World &, EntityId)> remove_component;
     std::function<bool(World &, EntityId, nlohmann::json &)> save;
     std::function<void(World &, EntityId, const nlohmann::json &)> load;
   };
@@ -24,12 +26,23 @@ public:
 
   template <ComponentType T> void register_component(std::string name) {
     Entry entry;
-    entry.save = [](World &world, EntityId id,
-                    nlohmann::json &out) -> bool {
+    entry.contains = [](World &world, EntityId id) {
+      return world.get_storage<T>().contains(id);
+    };
+
+    entry.add_component = [](World &world, EntityId id) {
+      world.add_component<T>(id, T{});
+    };
+
+    entry.remove_component = [](World &world, EntityId id) {
+      world.remove_component<T>(id);
+    };
+
+    entry.save = [](World &world, EntityId id, nlohmann::json &out) -> bool {
       auto *c = world.get_storage<T>().get(id);
       if (!c)
         return false;
-      out = *c; // calls to_json(json&, const T&)
+      out = *c;
       return true;
     };
     entry.load = [](World &world, EntityId id, const nlohmann::json &in) {

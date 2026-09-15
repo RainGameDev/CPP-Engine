@@ -45,6 +45,12 @@ public:
   template <ComponentType T> T &add_component(EntityId id, T component) {
     return get_storage<T>().insert(id, std::move(component));
   }
+
+  /// Removes a component of type T from entity ID.
+  template <ComponentType T> void remove_component(EntityId id) {
+    return get_storage<T>().remove(id);
+  }
+
   template <ComponentType T> T *get_component(EntityId id) {
     return get_storage<T>().get(id);
   }
@@ -64,6 +70,11 @@ public:
   uint32_t entityCount() { return currentScene.nextID - 1; }
 
   std::vector<EntityId> entities();
+
+  void delete_entity(EntityId id) {
+    for (auto &[_, storage] : currentScene.storages)
+      storage->remove(id);
+  }
 
   void inspect_entity(EntityId id) {
     for (auto &[_, storage] : currentScene.storages) {

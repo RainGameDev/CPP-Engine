@@ -172,7 +172,7 @@ public:
   void createDescriptorPool();
 
   void createCubeMesh();
-  std::shared_ptr<Mesh> createIndicatorMesh();
+  void createIndicatorMesh();
   void ensureTransformBuffer(uint32_t frame, uint32_t meshCount);
   void updateLightBuffer(uint32_t frame);
   void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,

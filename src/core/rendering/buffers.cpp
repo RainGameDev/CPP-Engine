@@ -1,4 +1,5 @@
 #include "assets/material_loader.h"
+#include "assets/model_loader.h"
 #include "assets/obj_loader.h"
 #include "ecs/components.h"
 #include "rendering/vulkan_render_context.h"
@@ -213,12 +214,23 @@ void VulkanRenderingContext::createCubeMesh() {
   cube.indexCount = static_cast<uint32_t>(indices.size());
   cube.material = &materials->getAsset("brick.mat");
 
-  auto entity = world->create_entity();
-  world->add_component(entity, MeshComponent{.mesh = std::make_shared<Mesh>(std::move(cube))});
-  world->add_component(entity, TransformComponent{});
+  auto *modelLoader = assetManager.getLoader<MeshAsset>();
+  if (modelLoader) {
+    std::string name = "generated_cube";
+    MeshAsset asset;
+    asset.mesh = std::move(cube);
+    modelLoader->registerAsset(name, std::move(asset));
+
+    auto entity = world->create_entity();
+    MeshComponent mc;
+    mc.mesh.assetName = name;
+    resolve(assetManager, mc.mesh);
+    world->add_component(entity, std::move(mc));
+    world->add_component(entity, TransformComponent{});
+  }
 }
 
-std::shared_ptr<Mesh> VulkanRenderingContext::createIndicatorMesh() {
+void VulkanRenderingContext::createIndicatorMesh() {
   float s = 0.5f;
   std::vector<Vertex> vertices = {
       // Top pyramid
@@ -314,5 +326,11 @@ std::shared_ptr<Mesh> VulkanRenderingContext::createIndicatorMesh() {
   mesh.indexCount = static_cast<uint32_t>(indices.size());
   mesh.material = &materials->getAsset("debug.mat");
 
-  return std::make_shared<Mesh>(std::move(mesh));
+  auto *modelLoader = assetManager.getLoader<MeshAsset>();
+  if (modelLoader) {
+    std::string name = "indicator";
+    MeshAsset asset;
+    asset.mesh = std::move(mesh);
+    modelLoader->registerAsset(name, std::move(asset));
+  }
 }

@@ -5,6 +5,7 @@
 #include "assets/scene_asset.h"
 #include "assets/shader_loader.h"
 #include "assets/texture_loader.h"
+#include "ecs/component_registry.h"
 #include "ecs/components.h"
 #include "ecs/entity.h"
 #include "ecs/input_manager.h"
@@ -350,10 +351,34 @@ void inspector(World &world) {
   EditorStatus &editorState = *world.get_resource<EditorStatus>();
 
   if (editorState.selectedID) {
-    if (ImGui::Button("Add Component")) { /* ... */
+    if (ImGui::Button("Add Component")) {
+      ImGui::OpenPopup("ComponentAddPopup");
     }
+
+    if (ImGui::BeginPopup("ComponentAddPopup")) {
+      ImGui::Text("Select Component");
+      ImGui::Separator();
+      std::unordered_map<std::string, ComponentRegistry::Entry> map =
+          ComponentRegistry::instance().entries();
+
+      for (auto &[name, entry] : map) {
+
+        if (entry.contains(world, editorState.selectedID)) {
+          continue;
+        }
+        if (ImGui::Selectable(name.c_str())) {
+          entry.add_component(world, editorState.selectedID);
+          ImGui::CloseCurrentPopup();
+        }
+      }
+
+      ImGui::EndPopup();
+    }
+
     ImGui::SameLine();
-    if (ImGui::Button("Delete")) { /* ... */
+
+    if (ImGui::Button("Delete")) {
+      world.delete_entity(editorState.selectedID);
     }
     ImGui::Separator();
 

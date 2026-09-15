@@ -56,17 +56,9 @@ inline std::unordered_map<EntityId, EntityId> load_world(World &world,
 }
 
 /// Replaces the current scene contents with a previously saved snapshot,
-/// preserving entity IDs. Mesh handles are not serialized, so they are carried
-/// over from the existing entities so undo/redo keeps renderable output.
+/// preserving entity IDs. Mesh handles are serialized as asset names and
+/// resolved through the AssetManager after loading.
 inline void restore_world(World &world, const json &in) {
-  std::unordered_map<EntityId, std::shared_ptr<Mesh>> meshes;
-  auto &meshStorage = world.get_storage<MeshComponent>();
-  for (std::size_t i = 0; i < meshStorage.size(); ++i) {
-    EntityId id = meshStorage.entity_at(i);
-    if (auto *mc = meshStorage.get(id))
-      meshes[id] = mc->mesh;
-  }
-
   for (EntityId id : world.entities())
     for (auto &[_, storage] : world.currentScene.storages)
       storage->remove(id);
@@ -74,6 +66,8 @@ inline void restore_world(World &world, const json &in) {
   world.currentScene.sceneName = in.value("scene_name", "Scene");
   auto &registry = ComponentRegistry::instance().entries();
   EntityId maxId = 0;
+
+  AssetManager *assetManager = world.get_resource<AssetManager>();
   for (auto &entity_json : in.at("entities")) {
     EntityId id = entity_json.at("id").get<EntityId>();
     maxId = std::max(maxId, id);
@@ -83,9 +77,10 @@ inline void restore_world(World &world, const json &in) {
         continue;
       it->second.load(world, id, component_json);
     }
-    if (auto *mc = world.get_storage<MeshComponent>().get(id))
-      if (auto it = meshes.find(id); it != meshes.end())
-        mc->mesh = it->second;
+    if (auto *mc = world.get_storage<MeshComponent>().get(id)) {
+      if (assetManager)
+        resolve(*assetManager, mc->mesh);
+    }
   }
   world.currentScene.nextID = maxId + 1;
 }

@@ -32,6 +32,12 @@ public:
     return assets;
   }
 
+  /// Registers or replaces an asset under the given name (used for
+  /// procedural / runtime-generated assets).
+  AssetType &registerAsset(const std::string &name, AssetType value) {
+    return assets[name] = std::move(value);
+  }
+
   /// Gets asset by name (e.g. "sdr_default_model.vert.spv")
   AssetType &getAsset(const std::string &name) { return assets[name]; }
 

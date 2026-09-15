@@ -47,7 +47,7 @@ void debugUI(World &world) {
   uint32_t vertexCount = 0;
   Query<MeshComponent> meshQuery(world);
   meshQuery.for_each([&](EntityId id, MeshComponent &mc) {
-    vertexCount += mc.mesh ? mc.mesh->vertexCount : 0;
+    vertexCount += mc.mesh ? mc.mesh->mesh.vertexCount : 0;
   });
 
   ImGui::Text("Vertex Count: %i", vertexCount);
