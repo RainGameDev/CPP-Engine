@@ -12,23 +12,13 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
-struct MeshAsset; // forward declaration — Handle<MeshAsset> only stores a pointer
-
 struct NameComponent : Component<NameComponent> {
   std::string name{"Entity"};
 
   void setName(const std::string &str) { name = str; }
 
-  void inspect(EntityId) { ImGui::SeparatorText("Name"); }
+  void inspect(World &, EntityId) { ImGui::SeparatorText("Name"); }
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(NameComponent, name)
-};
-
-struct MeshComponent : Component<MeshComponent> {
-  Handle<MeshAsset> mesh;
-  glm::vec4 overrideColor{0.0f};
-
-  void inspect(EntityId) {}
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(MeshComponent, mesh, overrideColor)
 };
 
 struct TransformComponent : Component<TransformComponent> {
@@ -46,7 +36,7 @@ struct TransformComponent : Component<TransformComponent> {
     return mat;
   }
 
-  void inspect(EntityId) {
+  void inspect(World &, EntityId) {
     ImGui::SeparatorText("Transform");
     ImGui::DragFloat3("Position", &position.x, 0.1f);
     ImGui::DragFloat3("Rotation", &rotation.x, 0.1f);

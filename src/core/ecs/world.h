@@ -79,7 +79,7 @@ public:
   void inspect_entity(EntityId id) {
     for (auto &[_, storage] : currentScene.storages) {
       if (storage->contains(id))
-        storage->inspect(id);
+        storage->inspect(*this, id);
     }
   }
 

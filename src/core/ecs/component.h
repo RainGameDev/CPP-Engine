@@ -5,21 +5,23 @@
 #include <concepts>
 #include <vector>
 
+class World;
+
 struct ComponentTag {};
 
 template <typename Derived> struct Component : ComponentTag {};
 
 template <typename T>
 concept ComponentType =
-    std::derived_from<T, ComponentTag> && requires(T &t, EntityId id) {
-      { t.inspect(id) };
+    std::derived_from<T, ComponentTag> && requires(T &t, World &w, EntityId id) {
+      { t.inspect(w, id) };
     };
 
 struct IComponentStorage {
   virtual ~IComponentStorage() = default;
   virtual bool contains(EntityId id) const = 0;
   virtual void remove(EntityId id) = 0;
-  virtual void inspect(EntityId id) = 0;
+  virtual void inspect(World &world, EntityId id) = 0;
 };
 
 template <ComponentType T> class ComponentStorage : public IComponentStorage {
@@ -69,9 +71,9 @@ public:
     sparse[id] = NONE;
   }
 
-  void inspect(EntityId id) override {
+  void inspect(World &world, EntityId id) override {
     if (T *comp = get(id))
-      comp->inspect(id);
+      comp->inspect(world, id);
   }
 
   std::size_t size() const { return dense.size(); }

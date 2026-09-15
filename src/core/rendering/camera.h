@@ -37,7 +37,7 @@ public:
   float getZoom() const { return fov; }
   void setZoom(float zoom) { fov = zoom; }
 
-  void inspect(EntityId) {
+  void inspect(World &, EntityId) {
     ImGui::SeparatorText("Camera");
 
     ImGui::DragFloat("FOV", &fov, 0.1f);
