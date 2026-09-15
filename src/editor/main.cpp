@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <exception>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <memory>
 #include <print>
 
@@ -26,7 +27,8 @@ void editorStartup(World &world) {
   EditorCamera editorCam;
   editorCam.cam = Camera{};
   editorCam.transform.position = {0.0f, 0.0f, -3.0f};
-  editorCam.transform.rotation = {-90.0f, 0.0f, 0.0f};
+  editorCam.transform.rotation =
+      glm::angleAxis(glm::radians(-89.0f), glm::vec3(1.0f, 0.0f, 0.0f));
   editorCam.cam.updateCameraVectors(editorCam.transform);
   world.add_resource<EditorCamera>(std::move(editorCam));
 

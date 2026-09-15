@@ -1,5 +1,7 @@
 #pragma once
 
+#define GLM_ENABLE_EXPERIMENTAL
+
 #include "assets/handle.h"
 #include "component.h"
 #include "ecs/component_registry.h"
@@ -8,9 +10,12 @@
 #include "rendering/mesh.h"
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/euler_angles.hpp>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <unordered_map>
 
 struct NameComponent : Component<NameComponent> {
   std::string name{"Entity"};
@@ -25,22 +30,39 @@ struct NameComponent : Component<NameComponent> {
 
 struct TransformComponent : Component<TransformComponent> {
   glm::vec3 position{0.0f};
-  glm::vec3 rotation{0.0f};
+  glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
   glm::vec3 scale{1.0f};
 
   glm::mat4 getMatrix() const {
-    glm::mat4 mat(1.0f);
-    mat = glm::translate(mat, position);
-    mat = glm::rotate(mat, rotation.x, glm::vec3(1, 0, 0));
-    mat = glm::rotate(mat, rotation.y, glm::vec3(0, 1, 0));
-    mat = glm::rotate(mat, rotation.z, glm::vec3(0, 0, 1));
-    mat = glm::scale(mat, scale);
-    return mat;
+    return glm::translate(glm::mat4(1.0f), position) *
+           glm::mat4_cast(rotation) *
+           glm::scale(glm::mat4(1.0f), scale);
   }
 
-  void inspect(World &, EntityId) {
+  void inspect(World &, EntityId id) {
     ImGui::DragFloat3("Position", &position.x, 0.1f);
-    ImGui::DragFloat3("Rotation", &rotation.x, 0.1f);
+
+    // Euler angles are only a one-way "view" for editing. Re-derive them
+    // from the quaternion only when it changed externally (e.g. gizmo or
+    // scene load), never while the user is dragging a field, so the gizmo
+    // and the inspector don't fight over the same value.
+    struct CachedRotation {
+      glm::quat lastDisplayed{1.0f, 0.0f, 0.0f, 0.0f};
+      glm::vec3 euler{0.0f};
+    };
+    static std::unordered_map<EntityId, CachedRotation> cache;
+    CachedRotation &cached = cache[id];
+
+    if (cached.lastDisplayed != rotation) {
+      cached.lastDisplayed = rotation;
+      cached.euler = glm::degrees(glm::eulerAngles(rotation));
+    }
+    if (ImGui::DragFloat3("Rotation", &cached.euler.x, 0.1f)) {
+      rotation = glm::quat(glm::radians(cached.euler));
+      cached.lastDisplayed = rotation;
+      cached.euler = glm::degrees(glm::eulerAngles(rotation));
+    }
+
     ImGui::DragFloat3("Scale", &scale.x, 0.1f);
   }
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(TransformComponent, position, rotation, scale)

@@ -113,9 +113,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
     ensureTransformBuffer(currentFrame, static_cast<uint32_t>(drawList.size()));
 
     for (auto &entry : drawList) {
-      TransformUBO tu{.pos = glm::vec4(entry.tc->position, 0.0f),
-                      .rotation = glm::vec4(entry.tc->rotation, 0.0f),
-                      .scale = glm::vec4(entry.tc->scale, 0.0f)};
+      TransformUBO tu{.model = entry.tc->getMatrix()};
       vk::DeviceSize offset = transformStride * entry.index;
       memcpy(static_cast<uint8_t *>(transformBuffers[currentFrame].mapped) +
                  offset,

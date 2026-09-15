@@ -1,4 +1,7 @@
 #pragma once
+#include "imgui.h"
+
+#include "ImGuizmo.h"
 #include "assets/asset_loader.h"
 #include "ecs/entity.h"
 #include <string>
@@ -9,4 +12,6 @@ struct EditorStatus {
   std::string assetSearch;
   std::string selectedAsset;
   std::string hoveredAsset;
+
+  ImGuizmo::OPERATION currentOp = ImGuizmo::TRANSLATE;
 };

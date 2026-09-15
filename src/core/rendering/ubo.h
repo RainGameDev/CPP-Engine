@@ -14,9 +14,7 @@ struct UniformBufferObject {
 };
 
 struct TransformUBO {
-  glm::vec4 pos;
-  glm::vec4 rotation;
-  glm::vec4 scale;
+  glm::mat4 model;
 };
 
 struct LightUBO {

@@ -30,6 +30,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(stb)
 
 FetchContent_Declare(
+    imguizmo
+    GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
+    GIT_TAG master
+)
+FetchContent_MakeAvailable(imguizmo)
+
+FetchContent_Declare(
     json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG v3.11.3
@@ -62,6 +69,8 @@ target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}/backends
 )
 target_link_libraries(imgui PUBLIC Vulkan::Vulkan glfw)
+
+target_link_libraries(imguizmo PUBLIC imgui)
 
 option(BUILD_TESTS "Build tests" ON)
 if(BUILD_TESTS)

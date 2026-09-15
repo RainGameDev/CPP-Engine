@@ -2,8 +2,10 @@
 #include "glm/ext/matrix_transform.hpp"
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <cmath>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 Camera::Camera(glm::vec3 up)
     : worldUp(up), movementSpeed(2.5f), mouseSensitivity(0.1f), fov(90.0f),
@@ -22,26 +24,27 @@ void Camera::processMouseMovement(TransformComponent &transform, float xOffset,
   xOffset *= mouseSensitivity;
   yOffset *= mouseSensitivity;
 
-  transform.rotation.y += xOffset;
-  transform.rotation.x += yOffset;
+  transform.rotation = glm::normalize(
+      glm::angleAxis(glm::radians(-xOffset), glm::vec3(0.0f, 1.0f, 0.0f)) *
+      transform.rotation);
 
   if (constrainPitch) {
-    transform.rotation.x = std::clamp(transform.rotation.x, -89.0f, 89.0f);
+    updateCameraVectors(transform);
+    float pitch = glm::degrees(
+        std::asin(std::clamp(front.y, -0.9999f, 0.9999f)));
+    float clamped = std::clamp(pitch + yOffset, -89.0f, 89.0f);
+    yOffset = clamped - pitch;
   }
+
+  transform.rotation = glm::normalize(
+      glm::angleAxis(glm::radians(yOffset), right) * transform.rotation);
 
   updateCameraVectors(transform);
 }
 
 void Camera::updateCameraVectors(const TransformComponent &transform) {
-  float yaw = transform.rotation.y;
-  float pitch = transform.rotation.x;
-
-  glm::vec3 newFront;
-  newFront.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-  newFront.y = sin(glm::radians(pitch));
-  newFront.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-  front = glm::normalize(newFront);
-
+  front = glm::normalize(glm::mat3_cast(transform.rotation) *
+                         glm::vec3(0.0f, 0.0f, -1.0f));
   right = glm::normalize(glm::cross(front, worldUp));
   up = glm::normalize(glm::cross(right, front));
 }

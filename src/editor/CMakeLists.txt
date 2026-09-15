@@ -14,6 +14,7 @@ target_include_directories(editor_lib PUBLIC
 target_link_libraries(editor_lib PUBLIC
     core_lib
     imgui
+    imguizmo
 )
 
 add_executable(editor main.cpp)

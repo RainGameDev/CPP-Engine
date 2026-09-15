@@ -551,10 +551,12 @@ private:
 
     // Per-asset orientation applied as a mesh transform (model space).
     TransformUBO transform{};
-    transform.rotation = glm::vec4(
-        glm::radians(asset.previewPitch), glm::radians(asset.previewYaw),
-        0.0f, 0.0f);
-    transform.scale = glm::vec4(1.0f);
+    transform.model = glm::rotate(glm::mat4(1.0f),
+                                  glm::radians(asset.previewPitch),
+                                  glm::vec3(1.0f, 0.0f, 0.0f));
+    transform.model = glm::rotate(transform.model,
+                                  glm::radians(asset.previewYaw),
+                                  glm::vec3(0.0f, 1.0f, 0.0f));
     memcpy(previewCamera.transformMapped, &transform, sizeof(transform));
 
     MaterialPushConstants pc{};

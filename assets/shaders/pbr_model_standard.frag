@@ -29,12 +29,6 @@ layout(set = 0, binding = 0) uniform UniformBufferObject {
     vec3 pos;
 } ubo;
 
-layout(set = 0, binding = 1) uniform TransformBufferObject {
-    vec4 pos;
-    vec4 rotation;
-    vec4 scale;
-} transformUBO;
-
 struct LightData {
     vec4 positionOrDirection;
     vec4 colorAndIntensity;
