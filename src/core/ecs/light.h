@@ -21,7 +21,7 @@ struct Point {
 
 struct Directional {};
 
-using LightType = std::variant<Spot, Point, Directional>;
+using LightType = std::variant<Directional, Point, Spot>;
 
 inline void to_json(nlohmann::json &j, const LightType &l) {
   if (std::holds_alternative<Directional>(l)) {
