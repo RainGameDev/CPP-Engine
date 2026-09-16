@@ -33,6 +33,7 @@ struct LightData {
     vec4 positionOrDirection;
     vec4 colorAndIntensity;
     vec4 params;
+    vec4 direction;
 };
 
 layout(set = 0, binding = 2) uniform LightsBuffer {
@@ -131,13 +132,24 @@ void main() {
     vec3 L;
 
     if (light.positionOrDirection.w < 0.5) {
-      L = normalize(light.positionOrDirection.xyz);
-    } else {
+      L = normalize(-light.direction.xyz);
+    } else if (light.positionOrDirection.w < 1.5) {
       vec3 toLight = light.positionOrDirection.xyz - fragWorldPos;
       L = normalize(toLight);
       float dist = length(toLight);
       float radius = light.params.x;
       intensity *= 1.0 / (1.0 + dist * dist / (radius * radius));
+    } else {
+      vec3 toLight = light.positionOrDirection.xyz - fragWorldPos;
+      float dist = length(toLight);
+      L = normalize(toLight);
+
+      vec3 spotDir = normalize(light.direction.xyz);
+      float cosAngle = dot(-L, spotDir);
+      float outer = cos(radians(light.params.x * 0.5));
+      float inner = cos(radians(light.params.x * 0.25));
+      intensity *= smoothstep(outer, inner, cosAngle);
+      intensity *= 1.0 / (1.0 + dist * dist / (light.params.y * light.params.y));
     }
 
     vec3 H = normalize(V + L);

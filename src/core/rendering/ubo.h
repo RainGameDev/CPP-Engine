@@ -21,6 +21,7 @@ struct LightUBO {
   glm::vec4 positionOrDirection;
   glm::vec4 colorAndIntensity;
   glm::vec4 params;
+  glm::vec4 direction;
 };
 
 constexpr uint32_t MAX_LIGHTS = 16;

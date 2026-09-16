@@ -423,6 +423,8 @@ private:
     lights.count = 1;
     lights.lights[0].positionOrDirection =
         glm::vec4(glm::normalize(glm::vec3(0.5f, 0.8f, 0.6f)), 0.0f);
+    lights.lights[0].direction =
+        glm::vec4(-glm::normalize(glm::vec3(0.5f, 0.8f, 0.6f)), 0.0f);
     lights.lights[0].colorAndIntensity = glm::vec4(1.0f, 1.0f, 1.0f, 1.5f);
     memcpy(previewCamera.lightMapped, &lights, sizeof(lights));
   }

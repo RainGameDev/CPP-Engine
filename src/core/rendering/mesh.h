@@ -1,5 +1,6 @@
 #pragma once
 
+#include "assets/asset_payload.h"
 #include "assets/handle.h"
 #include "assets/material_loader.h"
 #include "ecs/component.h"
@@ -113,22 +114,77 @@ struct MeshComponent : Component<MeshComponent> {
     auto *modelLoader =
         assetManager ? assetManager->getLoader<MeshAsset>() : nullptr;
 
-    const char *preview =
-        mesh.assetName.empty() ? "None" : mesh.assetName.c_str();
-    if (ImGui::BeginCombo("Asset", preview)) {
-      if (ImGui::Selectable("None", mesh.assetName.empty())) {
+    const float previewSize = 96.0f;
+    const char *label = "Mesh";
+    ImVec2 labelSize = ImGui::CalcTextSize(label);
+    const float labelOffsetY = (previewSize - labelSize.y) * 0.5f;
+
+    // load the mesh or its null
+    const MeshAsset *previewAsset =
+        modelLoader ? modelLoader->tryGetAsset(mesh.assetName) : nullptr;
+
+    // vertically center the label against the preview below it
+    ImVec2 rowCursor = ImGui::GetCursorPos();
+    ImGui::SetCursorPos(ImVec2(rowCursor.x, rowCursor.y + labelOffsetY));
+    ImGui::Text("%s", label);
+    ImGui::SetCursorPos(
+        ImVec2(rowCursor.x + labelSize.x + ImGui::GetStyle().ItemSpacing.x,
+               rowCursor.y));
+
+    // if the mesh exists render the preview image for it
+    if (previewAsset && previewAsset->previewTexture != VK_NULL_HANDLE) {
+      ImGui::Image((ImTextureID)previewAsset->previewTexture,
+                   ImVec2(previewSize, previewSize));
+    } else {
+      // otherwise just draw a box and some text
+      ImVec2 p = ImGui::GetCursorScreenPos();
+      ImDrawList *drawList = ImGui::GetWindowDrawList();
+      drawList->AddRectFilled(p, ImVec2(p.x + previewSize, p.y + previewSize),
+                              IM_COL32(70, 70, 70, 255), 4.0f);
+      const char *text = "No mesh \n selected";
+      ImVec2 textSize = ImGui::CalcTextSize(text);
+      drawList->AddText(ImVec2(p.x + (previewSize - textSize.x) * 0.5f,
+                               p.y + (previewSize - textSize.y) * 0.5f),
+                        IM_COL32(200, 200, 200, 255), text);
+      ImGui::Dummy(ImVec2(previewSize, previewSize));
+    }
+
+    // right clickable context menu for the image preview
+    if (ImGui::BeginPopupContextItem("mesh_preview_context_menu")) {
+      if (ImGui::Button("Remove Mesh")) {
         mesh = Handle<MeshAsset>{};
         overrideColor = glm::vec4(0.0f);
+        ImGui::CloseCurrentPopup();
       }
-      if (modelLoader) {
-        for (const auto &[name, _] : modelLoader->getAssets()) {
-          if (ImGui::Selectable(name.c_str(), mesh.assetName == name)) {
-            mesh.assetName = name;
-            resolve(*assetManager, mesh);
-          }
+      ImGui::Separator();
+
+      // TODO: move this into a popup menu?
+      // I dont really want this as a right click menu thing,
+      // maybe a godot style model picker
+      // if (modelLoader) {
+      //   for (const auto &[name, _] : modelLoader->getAssets()) {
+      //     if (ImGui::MenuItem(name.c_str(), "", mesh.assetName == name)) {
+      //       mesh.assetName = name;
+      //       resolve(*assetManager, mesh);
+      //     }
+      //   }
+      // }
+      ImGui::EndPopup();
+    }
+
+    // drag support for the asset type
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload *payload =
+              ImGui::AcceptDragDropPayload(AssetDragPayload::kPayloadType)) {
+        const auto &drag =
+            *static_cast<const AssetDragPayload *>(payload->Data);
+        if (drag.type == AssetDragPayload::Mesh && modelLoader &&
+            modelLoader->tryGetAsset(drag.name)) {
+          mesh.assetName = drag.name;
+          resolve(*assetManager, mesh);
         }
       }
-      ImGui::EndCombo();
+      ImGui::EndDragDropTarget();
     }
 
     ImGui::ColorEdit4("Override Color", &overrideColor.x);

@@ -3,6 +3,7 @@
 
 #include "ImGuizmo.h"
 #include "assets/asset_loader.h"
+#include "assets/asset_payload.h"
 #include "ecs/entity.h"
 #include <string>
 struct EditorStatus {

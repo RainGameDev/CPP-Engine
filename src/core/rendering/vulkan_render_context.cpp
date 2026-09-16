@@ -111,13 +111,18 @@ void VulkanRenderingContext::updateLightBuffer(uint32_t frame) {
         if (lightsubo.count >= MAX_LIGHTS)
           return;
         auto &l = lightsubo.lights[lightsubo.count];
+        glm::vec3 forward = tc.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+
         if (std::holds_alternative<Directional>(lc.lightType)) {
           l.positionOrDirection = glm::vec4(glm::normalize(tc.position), 0.0f);
+          l.direction = glm::vec4(forward, 0.0f);
         } else if (std::holds_alternative<Point>(lc.lightType)) {
           l.positionOrDirection = glm::vec4(tc.position, 1.0f);
           l.params.x = std::get<Point>(lc.lightType).radius;
+          l.direction = glm::vec4(forward, 1.0f);
         } else if (std::holds_alternative<Spot>(lc.lightType)) {
           l.positionOrDirection = glm::vec4(tc.position, 2.0f);
+          l.direction = glm::vec4(forward, 1.0f);
           auto &spot = std::get<Spot>(lc.lightType);
           l.params.x = spot.angle;
           l.params.y = spot.length;
@@ -225,9 +230,9 @@ void VulkanRenderingContext::createViewportResources(uint32_t width,
   auto colorMemReqs = viewportColorImage.getMemoryRequirements();
   vk::MemoryAllocateInfo colorAllocInfo{
       .allocationSize = colorMemReqs.size,
-      .memoryTypeIndex = findMemoryType(
-          colorMemReqs.memoryTypeBits,
-          vk::MemoryPropertyFlagBits::eDeviceLocal)};
+      .memoryTypeIndex =
+          findMemoryType(colorMemReqs.memoryTypeBits,
+                         vk::MemoryPropertyFlagBits::eDeviceLocal)};
   viewportColorImageMemory = vk::raii::DeviceMemory(device, colorAllocInfo);
   viewportColorImage.bindMemory(*viewportColorImageMemory, 0);
 
@@ -259,9 +264,9 @@ void VulkanRenderingContext::createViewportResources(uint32_t width,
   auto depthMemReqs = viewportDepthImage.getMemoryRequirements();
   vk::MemoryAllocateInfo depthAllocInfo{
       .allocationSize = depthMemReqs.size,
-      .memoryTypeIndex = findMemoryType(
-          depthMemReqs.memoryTypeBits,
-          vk::MemoryPropertyFlagBits::eDeviceLocal)};
+      .memoryTypeIndex =
+          findMemoryType(depthMemReqs.memoryTypeBits,
+                         vk::MemoryPropertyFlagBits::eDeviceLocal)};
   viewportDepthImageMemory = vk::raii::DeviceMemory(device, depthAllocInfo);
   viewportDepthImage.bindMemory(*viewportDepthImageMemory, 0);
 
@@ -287,9 +292,9 @@ void VulkanRenderingContext::createViewportResources(uint32_t width,
 
   // ImGui descriptor set (only needed in editor mode)
   if (editorMode) {
-    viewportDescriptorSet = ImGui_ImplVulkan_AddTexture(
-        *viewportSampler, *viewportColorImageView,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    viewportDescriptorSet =
+        ImGui_ImplVulkan_AddTexture(*viewportSampler, *viewportColorImageView,
+                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   }
 }
 
