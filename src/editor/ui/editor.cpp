@@ -341,12 +341,30 @@ void hierarchy(World &world) {
   ImGui::Separator();
 
   Query<NameComponent> nameQuery(world);
-  nameQuery.for_each([&editorState](EntityId id, NameComponent &nameComp) {
+  std::vector<EntityId> entities;
+  nameQuery.for_each(
+      [&entities](EntityId id, NameComponent &) { entities.push_back(id); });
+  std::sort(entities.begin(), entities.end());
+
+  for (EntityId id : entities) {
+    auto *nameComp = world.get_component<NameComponent>(id);
+    if (!nameComp)
+      continue;
+
     if (ImGui::Button(
-            (nameComp.name + " (" + std::to_string(id) + ")").c_str())) {
+            (nameComp->name + " (" + std::to_string(id) + ")").c_str())) {
       editorState.selectedID = id;
     }
-  });
+
+    if (ImGui::BeginPopupContextItem()) {
+      if (ImGui::MenuItem("Delete")) {
+        world.delete_entity(id);
+        ImGui::CloseCurrentPopup();
+      }
+
+      ImGui::EndPopup();
+    }
+  }
 
   ImGui::End();
 }
