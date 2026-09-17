@@ -78,8 +78,10 @@ inline void restore_world(World &world, const json &in) {
       it->second.load(world, id, component_json);
     }
     if (auto *mc = world.get_storage<MeshComponent>().get(id)) {
-      if (assetManager)
+      if (assetManager) {
         resolve(*assetManager, mc->mesh);
+        resolve(*assetManager, mc->overrideMaterial);
+      }
     }
   }
   world.currentScene.nextID = maxId + 1;

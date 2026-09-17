@@ -175,4 +175,148 @@ void VulkanRenderingContext::createDescriptorSets() {
   }
 }
 
+void VulkanRenderingContext::createDefaultMaterial() {
+  uint32_t pixel = 0xFFFFFFFF;
+  vk::DeviceSize imageSize = sizeof(pixel);
+
+  vk::BufferCreateInfo bufInfo{.size = imageSize,
+                               .usage = vk::BufferUsageFlagBits::eTransferSrc,
+                               .sharingMode = vk::SharingMode::eExclusive};
+  vk::raii::Buffer stagingBuf(device, bufInfo);
+
+  auto memReq = stagingBuf.getMemoryRequirements();
+  vk::MemoryAllocateInfo stagingAllocInfo{
+      .allocationSize = memReq.size,
+      .memoryTypeIndex = findMemoryType(
+          memReq.memoryTypeBits,
+          vk::MemoryPropertyFlagBits::eHostVisible |
+              vk::MemoryPropertyFlagBits::eHostCoherent)};
+  vk::raii::DeviceMemory stagingMem(device, stagingAllocInfo);
+  stagingBuf.bindMemory(*stagingMem, 0);
+
+  void *mapped = stagingMem.mapMemory(0, imageSize);
+  memcpy(mapped, &pixel, imageSize);
+  stagingMem.unmapMemory();
+
+  vk::ImageCreateInfo imageInfo{.imageType = vk::ImageType::e2D,
+                                .format = vk::Format::eR8G8B8A8Srgb,
+                                .extent = {1, 1, 1},
+                                .mipLevels = 1,
+                                .arrayLayers = 1,
+                                .samples = vk::SampleCountFlagBits::e1,
+                                .tiling = vk::ImageTiling::eOptimal,
+                                .usage = vk::ImageUsageFlagBits::eSampled |
+                                         vk::ImageUsageFlagBits::eTransferDst,
+                                .sharingMode = vk::SharingMode::eExclusive,
+                                .initialLayout = vk::ImageLayout::eUndefined};
+  defaultWhiteTexture.image = vk::raii::Image(device, imageInfo);
+
+  auto imgMemReq = defaultWhiteTexture.image.getMemoryRequirements();
+  vk::MemoryAllocateInfo imgAllocInfo{
+      .allocationSize = imgMemReq.size,
+      .memoryTypeIndex = findMemoryType(
+          imgMemReq.memoryTypeBits,
+          vk::MemoryPropertyFlagBits::eDeviceLocal)};
+  defaultWhiteTexture.memory = vk::raii::DeviceMemory(device, imgAllocInfo);
+  defaultWhiteTexture.image.bindMemory(*defaultWhiteTexture.memory, 0);
+
+  {
+    vk::CommandBufferBeginInfo beginInfo{
+        .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
+    auto cmdBufs = vk::raii::CommandBuffers(
+        device, {.commandPool = *commandPool,
+                 .level = vk::CommandBufferLevel::ePrimary,
+                 .commandBufferCount = 1});
+    auto cmd = std::move(cmdBufs.front());
+    cmd.begin(beginInfo);
+
+    vk::ImageMemoryBarrier2 barrier{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+        .srcAccessMask = vk::AccessFlagBits2::eNone,
+        .dstStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+        .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
+        .oldLayout = vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eTransferDstOptimal,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = *defaultWhiteTexture.image,
+        .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                             .baseMipLevel = 0,
+                             .levelCount = 1,
+                             .baseArrayLayer = 0,
+                             .layerCount = 1}};
+    vk::DependencyInfo depInfo{.imageMemoryBarrierCount = 1,
+                               .pImageMemoryBarriers = &barrier};
+    cmd.pipelineBarrier2(depInfo);
+
+    vk::BufferImageCopy region{
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                             .mipLevel = 0,
+                             .baseArrayLayer = 0,
+                             .layerCount = 1},
+        .imageOffset = {0, 0, 0},
+        .imageExtent = {1, 1, 1}};
+    cmd.copyBufferToImage(*stagingBuf, *defaultWhiteTexture.image,
+                          vk::ImageLayout::eTransferDstOptimal, region);
+
+    barrier.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+    barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    barrier.srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
+    barrier.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
+    cmd.pipelineBarrier2(depInfo);
+
+    cmd.end();
+
+    vk::CommandBuffer rawCmd = *cmd;
+    vk::SubmitInfo submitInfo{.commandBufferCount = 1,
+                              .pCommandBuffers = &rawCmd};
+    queue.submit(submitInfo, nullptr);
+    queue.waitIdle();
+  }
+
+  defaultWhiteTexture.imageView = vk::raii::ImageView(
+      device,
+      vk::ImageViewCreateInfo{
+          .image = *defaultWhiteTexture.image,
+          .viewType = vk::ImageViewType::e2D,
+          .format = vk::Format::eR8G8B8A8Srgb,
+          .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                               .levelCount = 1,
+                               .layerCount = 1}});
+
+  defaultWhiteTexture.sampler = vk::raii::Sampler(
+      device,
+      vk::SamplerCreateInfo{.magFilter = vk::Filter::eNearest,
+                            .minFilter = vk::Filter::eNearest,
+                            .mipmapMode = vk::SamplerMipmapMode::eNearest,
+                            .addressModeU = vk::SamplerAddressMode::eRepeat,
+                            .addressModeV = vk::SamplerAddressMode::eRepeat});
+
+  vk::DescriptorSetLayout layout = materialSetLayout;
+  vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool = *descriptorPool,
+                                          .descriptorSetCount = 1,
+                                          .pSetLayouts = &layout};
+  auto sets = device.allocateDescriptorSets(allocInfo);
+  defaultMaterialDescriptorSet = std::move(sets.front());
+
+  vk::DescriptorImageInfo whiteInfo{
+      .sampler = *defaultWhiteTexture.sampler,
+      .imageView = *defaultWhiteTexture.imageView,
+      .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+
+  std::array<vk::WriteDescriptorSet, 4> writes{};
+  for (uint32_t i = 0; i < 4; ++i) {
+    writes[i] = {.dstSet = *defaultMaterialDescriptorSet,
+                 .dstBinding = i,
+                 .dstArrayElement = 0,
+                 .descriptorCount = 1,
+                 .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                 .pImageInfo = &whiteInfo};
+  }
+  device.updateDescriptorSets(writes, nullptr);
+}
+
 

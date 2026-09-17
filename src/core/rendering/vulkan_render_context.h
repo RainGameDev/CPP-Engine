@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assets/shader_loader.h"
+#include "assets/texture_loader.h"
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
@@ -95,6 +96,9 @@ public:
   vk::raii::DescriptorSetLayout materialSetLayout = nullptr;
   vk::raii::DescriptorSets descriptorSets = nullptr;
 
+  TextureAsset defaultWhiteTexture;
+  vk::raii::DescriptorSet defaultMaterialDescriptorSet{nullptr};
+
   // Viewport render target
   vk::raii::Image viewportColorImage{nullptr};
   vk::raii::DeviceMemory viewportColorImageMemory{nullptr};
@@ -170,6 +174,7 @@ public:
   void createDescriptorSetLayout();
   void createDescriptorSets();
   void createDescriptorPool();
+  void createDefaultMaterial();
 
   void createCubeMesh();
   void createIndicatorMesh();

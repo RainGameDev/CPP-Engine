@@ -1,5 +1,5 @@
 {
-  "name": "brick",
+  "name": "plate_armor",
   "vertexShader": "pbr_model_standard.vert",
   "fragmentShader": "pbr_model_standard.frag",
   "albedoMap": "steelarmor",

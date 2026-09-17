@@ -107,6 +107,7 @@ struct MeshAsset {
 
 struct MeshComponent : Component<MeshComponent> {
   Handle<MeshAsset> mesh;
+  Handle<MaterialAsset> overrideMaterial;
   glm::vec4 overrideColor{0.0f};
 
   void inspect(World &world, EntityId) {
@@ -157,37 +158,60 @@ struct MeshComponent : Component<MeshComponent> {
         ImGui::CloseCurrentPopup();
       }
       ImGui::Separator();
-
-      // TODO: move this into a popup menu?
-      // I dont really want this as a right click menu thing,
-      // maybe a godot style model picker
-      // if (modelLoader) {
-      //   for (const auto &[name, _] : modelLoader->getAssets()) {
-      //     if (ImGui::MenuItem(name.c_str(), "", mesh.assetName == name)) {
-      //       mesh.assetName = name;
-      //       resolve(*assetManager, mesh);
-      //     }
-      //   }
-      // }
       ImGui::EndPopup();
     }
 
-    // drag support for the asset type
-    if (ImGui::BeginDragDropTarget()) {
-      if (const ImGuiPayload *payload =
-              ImGui::AcceptDragDropPayload(AssetDragPayload::kPayloadType)) {
-        const auto &drag =
-            *static_cast<const AssetDragPayload *>(payload->Data);
-        if (drag.type == AssetDragPayload::Mesh && modelLoader &&
-            modelLoader->tryGetAsset(drag.name)) {
-          mesh.assetName = drag.name;
-          resolve(*assetManager, mesh);
-        }
-      }
-      ImGui::EndDragDropTarget();
-    }
+    if (assetManager)
+      assetDropTarget(AssetDragPayload::Mesh, *assetManager, mesh);
 
     ImGui::ColorEdit4("Override Color", &overrideColor.x);
+
+    // Override Material
+    ImGui::Separator();
+
+    const char *matLabel = "Material";
+    ImVec2 matLabelSize = ImGui::CalcTextSize(matLabel);
+    const float matLabelOffsetY = (previewSize - matLabelSize.y) * 0.5f;
+
+    ImVec2 matRow = ImGui::GetCursorPos();
+    ImGui::SetCursorPos(ImVec2(matRow.x, matRow.y + matLabelOffsetY));
+    ImGui::TextUnformatted(matLabel);
+    ImGui::SetCursorPos(
+        ImVec2(matRow.x + matLabelSize.x + ImGui::GetStyle().ItemSpacing.x,
+               matRow.y));
+
+    ImVec2 matPos = ImGui::GetCursorScreenPos();
+    ImDrawList *matDrawList = ImGui::GetWindowDrawList();
+    ImU32 matBoxColor = overrideMaterial ? IM_COL32(0, 150, 140, 255)
+                                         : IM_COL32(70, 70, 70, 255);
+    matDrawList->AddRectFilled(
+        matPos, ImVec2(matPos.x + previewSize, matPos.y + previewSize),
+        matBoxColor, 4.0f);
+    if (overrideMaterial) {
+      matDrawList->AddText(ImVec2(matPos.x + 6.0f, matPos.y + 6.0f),
+                           IM_COL32(240, 240, 240, 255),
+                           overrideMaterial.assetName.c_str());
+    } else {
+      const char *hint = "Drag material \n here";
+      ImVec2 hintSize = ImGui::CalcTextSize(hint);
+      matDrawList->AddText(ImVec2(matPos.x + (previewSize - hintSize.x) * 0.5f,
+                                  matPos.y + (previewSize - hintSize.y) * 0.5f),
+                           IM_COL32(200, 200, 200, 255), hint);
+    }
+    ImGui::Dummy(ImVec2(previewSize, previewSize));
+
+    if (ImGui::BeginPopupContextItem("material_override_context_menu")) {
+      if (ImGui::Button("Remove Material")) {
+        overrideMaterial = Handle<MaterialAsset>{};
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+    }
+
+    if (assetManager)
+      assetDropTarget(AssetDragPayload::Material, *assetManager,
+                      overrideMaterial);
   }
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(MeshComponent, mesh, overrideColor)
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(MeshComponent, mesh, overrideMaterial,
+                                 overrideColor)
 };

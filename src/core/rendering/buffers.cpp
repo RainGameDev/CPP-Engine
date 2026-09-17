@@ -225,6 +225,7 @@ void VulkanRenderingContext::createCubeMesh() {
     MeshComponent mc;
     mc.mesh.assetName = name;
     resolve(assetManager, mc.mesh);
+    resolve(assetManager, mc.overrideMaterial);
     world->add_component(entity, std::move(mc));
     world->add_component(entity, TransformComponent{});
   }

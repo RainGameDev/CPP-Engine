@@ -20,6 +20,7 @@ class ModelLoader : public AssetLoader<MeshAsset> {
   vk::raii::CommandPool &commandPool;
   vk::raii::Queue &queue;
   AssetManager &assetManager;
+  vk::DescriptorSet defaultMaterialSet;
 
   // Shared preview render-pass/pipeline, built once and reused for every
   // asset's thumbnail render, rather than per-asset.
@@ -50,9 +51,11 @@ public:
               vk::raii::CommandPool &commandPool, vk::raii::Queue &queue,
               AssetManager &assetManager,
               vk::DescriptorSetLayout perFrameSetLayout,
-              vk::DescriptorSetLayout materialSetLayout)
+              vk::DescriptorSetLayout materialSetLayout,
+              vk::DescriptorSet defaultMaterialSet)
       : device(device), physicalDevice(physicalDevice),
-        commandPool(commandPool), queue(queue), assetManager(assetManager) {
+        commandPool(commandPool), queue(queue), assetManager(assetManager),
+        defaultMaterialSet(defaultMaterialSet) {
     createPreviewRenderPass();
     createPreviewPipeline(perFrameSetLayout, materialSetLayout);
     createPreviewCamera(perFrameSetLayout);
@@ -69,7 +72,8 @@ public:
     mesh.indexCount = static_cast<uint32_t>(data.indices.size());
     mesh.vertexCount = static_cast<uint32_t>(data.vertices.size());
     if (auto *materials = assetManager.getLoader<MaterialAsset>()) {
-      mesh.material = &materials->getAsset("brick.mat");
+      if (auto *mat = materials->tryGetAsset("brick.mat"))
+        mesh.material = mat;
     }
 
     // Vertex buffer
@@ -563,7 +567,7 @@ private:
 
     MaterialPushConstants pc{};
     pc.baseColorFactor = glm::vec4(1.0f);
-    pc.metallicFactor = 1.0f;
+    pc.metallicFactor = 0.0f;
     pc.roughnessFactor = 1.0f;
     pc.parallaxStrength = 0.0f;
 
@@ -603,9 +607,9 @@ private:
           vk::PipelineBindPoint::eGraphics, *previewPipelineLayout, 0,
           {previewCamera.set, *asset.mesh.material->descriptorSet}, {0});
     } else {
-      cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                             *previewPipelineLayout, 0, {previewCamera.set},
-                             {0});
+      cmd.bindDescriptorSets(
+          vk::PipelineBindPoint::eGraphics, *previewPipelineLayout, 0,
+          {previewCamera.set, defaultMaterialSet}, {0});
     }
 
     cmd.bindVertexBuffers(0, {*asset.mesh.vertexBuffer}, {0});

@@ -30,6 +30,7 @@ void VulkanRenderingContext::init(GLFWwindow *window, World &ecsWorld) {
   createDescriptorPool();
   createUniformBuffers();
   createDescriptorSets();
+  createDefaultMaterial();
   createGraphicsPipelineLayout();
 
   createCommandBuffer();

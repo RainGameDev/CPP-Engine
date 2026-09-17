@@ -64,7 +64,7 @@ void Application::run() {
   assetManager.addLoader(std::make_unique<ModelLoader>(
       renderer.device, renderer.physicalDevice, renderer.commandPool,
       renderer.queue, assetManager, *renderer.descriptorSetLayout,
-      *renderer.materialSetLayout));
+      *renderer.materialSetLayout, *renderer.defaultMaterialDescriptorSet));
   assetManager.loadDirectory("assets/models");
   assetManager.addLoader(std::make_unique<SceneLoader>());
   assetManager.loadDirectory("assets");

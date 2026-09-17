@@ -1,8 +1,0 @@
-{
-  "name": "debug",
-  "vertexShader": "debug.vert",
-  "fragmentShader": "debug.frag",
-  "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
-  "metallicFactor": 0.0,
-  "roughnessFactor": 1.0
-}

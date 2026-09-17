@@ -750,6 +750,7 @@ static void spawnEntityFromMeshDrop(World &world,
   MeshComponent mc;
   mc.mesh.assetName = payload.name;
   resolve(*assetManager, mc.mesh);
+  resolve(*assetManager, mc.overrideMaterial);
   world.add_component(id, std::move(mc));
   world.add_component(id, TransformComponent{.position = position});
 

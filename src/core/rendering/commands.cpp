@@ -125,9 +125,14 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
         continue;
       auto *mesh = &entry.mc->mesh->mesh;
 
+      // Override material wins over the mesh's base material.
+      MaterialAsset *mat = entry.mc->overrideMaterial
+                               ? entry.mc->overrideMaterial.get()
+                               : mesh->material;
+
       ShaderKey key;
-      if (mesh->material != nullptr) {
-        key = {mesh->material->vertexShader, mesh->material->fragmentShader};
+      if (mat != nullptr) {
+        key = {mat->vertexShader, mat->fragmentShader};
       } else {
         key = {"sdr_default_model.vert", "sdr_default_model.frag"};
       }
@@ -145,24 +150,24 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
                                       0.0f, 1.0f));
       cmd.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), viewportExtent));
 
-      if (mesh->material != nullptr) {
+      if (mat != nullptr) {
         cmd.bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
-            {*descriptorSets[currentFrame], *mesh->material->descriptorSet},
+            {*descriptorSets[currentFrame], *mat->descriptorSet},
             {dynamicOffset});
       } else {
         cmd.bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
-            {*descriptorSets[currentFrame]}, {dynamicOffset});
+            {*descriptorSets[currentFrame], *defaultMaterialDescriptorSet},
+            {dynamicOffset});
       }
 
-      MaterialAsset *mat = mesh->material;
       MaterialPushConstants pc{
           .baseColorFactor =
               entry.mc->overrideColor.a > 0.0f
                   ? entry.mc->overrideColor
                   : (mat ? mat->baseColorFactor : glm::vec4(1.0f)),
-          .metallicFactor = mat ? mat->metallicFactor : 1.0f,
+          .metallicFactor = mat ? mat->metallicFactor : 0.0f,
           .roughnessFactor = mat ? mat->roughnessFactor : 1.0f,
           .parallaxStrength = mat ? mat->parallaxStrength : 0.0f};
       cmd.pushConstants(*pipelineLayout,

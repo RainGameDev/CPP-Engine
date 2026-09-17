@@ -41,7 +41,7 @@
     {
       "components": {
         "MeshComponent": {
-          "mesh": "mesh",
+          "mesh": "plate_armor",
           "overrideColor": [
             0.6813725233078003,
             0.6813725233078003,
@@ -155,6 +155,41 @@
     {
       "components": {},
       "id": 4
+    },
+    {
+      "components": {
+        "MeshComponent": {
+          "mesh": "cube",
+          "overrideColor": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "NameComponent": {
+          "name": "transform"
+        },
+        "TransformComponent": {
+          "position": [
+            0.0,
+            -3.608335256576538,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            15.0,
+            1.0,
+            15.0
+          ]
+        }
+      },
+      "id": 5
     }
   ],
   "scene_name": "Scene"

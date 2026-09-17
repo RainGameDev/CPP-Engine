@@ -38,7 +38,13 @@ void editorStartup(World &world) {
 
 void debugUI(World &world) {
   ImGui::Begin("Debug", nullptr);
-  ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+
+  ImGuiIO &io = ImGui::GetIO();
+  float fps = io.Framerate;
+  float frameTimeMs = io.DeltaTime * 1000.0f;
+  float avgFrameTimeMs = 1000.0f / io.Framerate;
+
+  ImGui::Text("FPS: %.1f (%.1f ms)", fps, frameTimeMs);
 
   if (auto *editorCam = world.get_resource<EditorCamera>()) {
     glm::vec3 position = editorCam->cam.getPosition(editorCam->transform);
