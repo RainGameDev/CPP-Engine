@@ -53,8 +53,12 @@ public:
       out = *c;
       return true;
     };
-    entry.load = [](World &world, EntityId id, const nlohmann::json &in) {
-      world.add_component<T>(id, in.get<T>());
+    nlohmann::json defaultJson = nlohmann::json(T{});
+    entry.load = [defaultJson](World &world, EntityId id,
+                               const nlohmann::json &in) {
+      nlohmann::json merged = defaultJson;
+      merged.merge_patch(in);
+      world.add_component<T>(id, merged.get<T>());
     };
     entries_[name] = std::move(entry);
   }

@@ -47,7 +47,8 @@
             0.6813725233078003,
             0.6813725233078003,
             1.0
-          ]
+          ],
+          "overrideMaterial": "steel_armor.mat"
         },
         "NameComponent": {
           "name": "Mesh"
@@ -165,7 +166,8 @@
             0.0,
             0.0,
             0.0
-          ]
+          ],
+          "overrideMaterial": ""
         },
         "NameComponent": {
           "name": "transform"
