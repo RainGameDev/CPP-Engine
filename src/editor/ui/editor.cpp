@@ -446,10 +446,6 @@ void inspector(World &world) {
         capturedClean = true;
       }
     }
-
-    float footerHeight = ImGui::GetFrameHeightWithSpacing();
-    ImGui::SetCursorPosY(ImGui::GetWindowHeight() - footerHeight);
-    ImGui::Separator();
   }
 
   ImGui::End();
