@@ -132,7 +132,7 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
 
       ShaderKey key;
       if (mat != nullptr) {
-        key = {mat->vertexShader, mat->fragmentShader};
+        key = {mat->vertexShader.assetName, mat->fragmentShader.assetName};
       } else {
         key = {"sdr_default_model.vert", "sdr_default_model.frag"};
       }

@@ -116,101 +116,66 @@ struct MeshComponent : Component<MeshComponent> {
         assetManager ? assetManager->getLoader<MeshAsset>() : nullptr;
 
     const float previewSize = 96.0f;
-    const char *label = "Mesh";
-    ImVec2 labelSize = ImGui::CalcTextSize(label);
-    const float labelOffsetY = (previewSize - labelSize.y) * 0.5f;
 
     // load the mesh or its null
     const MeshAsset *previewAsset =
         modelLoader ? modelLoader->tryGetAsset(mesh.assetName) : nullptr;
 
-    // vertically center the label against the preview below it
-    ImVec2 rowCursor = ImGui::GetCursorPos();
-    ImGui::SetCursorPos(ImVec2(rowCursor.x, rowCursor.y + labelOffsetY));
-    ImGui::Text("%s", label);
-    ImGui::SetCursorPos(
-        ImVec2(rowCursor.x + labelSize.x + ImGui::GetStyle().ItemSpacing.x,
-               rowCursor.y));
-
-    // if the mesh exists render the preview image for it
-    if (previewAsset && previewAsset->previewTexture != VK_NULL_HANDLE) {
-      ImGui::Image((ImTextureID)previewAsset->previewTexture,
-                   ImVec2(previewSize, previewSize));
-    } else {
-      // otherwise just draw a box and some text
-      ImVec2 p = ImGui::GetCursorScreenPos();
-      ImDrawList *drawList = ImGui::GetWindowDrawList();
-      drawList->AddRectFilled(p, ImVec2(p.x + previewSize, p.y + previewSize),
-                              IM_COL32(70, 70, 70, 255), 4.0f);
-      const char *text = "No mesh \n selected";
-      ImVec2 textSize = ImGui::CalcTextSize(text);
-      drawList->AddText(ImVec2(p.x + (previewSize - textSize.x) * 0.5f,
-                               p.y + (previewSize - textSize.y) * 0.5f),
-                        IM_COL32(200, 200, 200, 255), text);
-      ImGui::Dummy(ImVec2(previewSize, previewSize));
+    if (assetManager) {
+      assetDragDropField(
+          "Mesh", AssetDragPayload::Mesh, *assetManager, mesh, previewSize,
+          [&, this](float size) {
+            // if the mesh exists render the preview image for it
+            if (previewAsset &&
+                previewAsset->previewTexture != VK_NULL_HANDLE) {
+              ImGui::Image((ImTextureID)previewAsset->previewTexture,
+                           ImVec2(size, size));
+            } else {
+              // otherwise just draw a box and some text
+              ImVec2 p = ImGui::GetCursorScreenPos();
+              ImDrawList *drawList = ImGui::GetWindowDrawList();
+              drawList->AddRectFilled(p, ImVec2(p.x + size, p.y + size),
+                                      IM_COL32(70, 70, 70, 255), 4.0f);
+              const char *text = "No mesh \n selected";
+              ImVec2 textSize = ImGui::CalcTextSize(text);
+              drawList->AddText(ImVec2(p.x + (size - textSize.x) * 0.5f,
+                                       p.y + (size - textSize.y) * 0.5f),
+                                IM_COL32(200, 200, 200, 255), text);
+              ImGui::Dummy(ImVec2(size, size));
+            }
+          },
+          [this]() { overrideColor = glm::vec4(0.0f); });
     }
-
-    // right clickable context menu for the image preview
-    if (ImGui::BeginPopupContextItem("mesh_preview_context_menu")) {
-      if (ImGui::Button("Remove Mesh")) {
-        mesh = Handle<MeshAsset>{};
-        overrideColor = glm::vec4(0.0f);
-        ImGui::CloseCurrentPopup();
-      }
-      ImGui::Separator();
-      ImGui::EndPopup();
-    }
-
-    if (assetManager)
-      assetDropTarget(AssetDragPayload::Mesh, *assetManager, mesh);
 
     ImGui::ColorEdit4("Override Color", &overrideColor.x);
 
     // Override Material
     ImGui::Separator();
 
-    const char *matLabel = "Material";
-    ImVec2 matLabelSize = ImGui::CalcTextSize(matLabel);
-    const float matLabelOffsetY = (previewSize - matLabelSize.y) * 0.5f;
-
-    ImVec2 matRow = ImGui::GetCursorPos();
-    ImGui::SetCursorPos(ImVec2(matRow.x, matRow.y + matLabelOffsetY));
-    ImGui::TextUnformatted(matLabel);
-    ImGui::SetCursorPos(
-        ImVec2(matRow.x + matLabelSize.x + ImGui::GetStyle().ItemSpacing.x,
-               matRow.y));
-
-    ImVec2 matPos = ImGui::GetCursorScreenPos();
-    ImDrawList *matDrawList = ImGui::GetWindowDrawList();
-    ImU32 matBoxColor = overrideMaterial ? IM_COL32(0, 150, 140, 255)
-                                         : IM_COL32(70, 70, 70, 255);
-    matDrawList->AddRectFilled(
-        matPos, ImVec2(matPos.x + previewSize, matPos.y + previewSize),
-        matBoxColor, 4.0f);
-    if (overrideMaterial) {
-      matDrawList->AddText(ImVec2(matPos.x + 6.0f, matPos.y + 6.0f),
-                           IM_COL32(240, 240, 240, 255),
-                           overrideMaterial.assetName.c_str());
-    } else {
-      const char *hint = "Drag material \n here";
-      ImVec2 hintSize = ImGui::CalcTextSize(hint);
-      matDrawList->AddText(ImVec2(matPos.x + (previewSize - hintSize.x) * 0.5f,
-                                  matPos.y + (previewSize - hintSize.y) * 0.5f),
-                           IM_COL32(200, 200, 200, 255), hint);
+    if (assetManager) {
+      assetDragDropField(
+          "Material", AssetDragPayload::Material, *assetManager,
+          overrideMaterial, previewSize, [this](float size) {
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            ImDrawList *drawList = ImGui::GetWindowDrawList();
+            ImU32 boxColor = overrideMaterial ? IM_COL32(0, 150, 140, 255)
+                                              : IM_COL32(70, 70, 70, 255);
+            drawList->AddRectFilled(pos, ImVec2(pos.x + size, pos.y + size),
+                                    boxColor, 4.0f);
+            if (overrideMaterial) {
+              drawList->AddText(ImVec2(pos.x + 6.0f, pos.y + 6.0f),
+                                IM_COL32(240, 240, 240, 255),
+                                overrideMaterial.assetName.c_str());
+            } else {
+              const char *hint = "Drag material \n here";
+              ImVec2 hintSize = ImGui::CalcTextSize(hint);
+              drawList->AddText(ImVec2(pos.x + (size - hintSize.x) * 0.5f,
+                                       pos.y + (size - hintSize.y) * 0.5f),
+                                IM_COL32(200, 200, 200, 255), hint);
+            }
+            ImGui::Dummy(ImVec2(size, size));
+          });
     }
-    ImGui::Dummy(ImVec2(previewSize, previewSize));
-
-    if (ImGui::BeginPopupContextItem("material_override_context_menu")) {
-      if (ImGui::Button("Remove Material")) {
-        overrideMaterial = Handle<MaterialAsset>{};
-        ImGui::CloseCurrentPopup();
-      }
-      ImGui::EndPopup();
-    }
-
-    if (assetManager)
-      assetDropTarget(AssetDragPayload::Material, *assetManager,
-                      overrideMaterial);
   }
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(MeshComponent, mesh, overrideMaterial,
                                  overrideColor)

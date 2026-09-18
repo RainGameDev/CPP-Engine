@@ -3,6 +3,7 @@
 #include "assets/asset_manager.h"
 #include "assets/asset_payload.h"
 #include "imgui.h"
+#include <functional>
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -46,6 +47,48 @@ bool assetDropTarget(AssetDragPayload::Type type, AssetManager &assetManager,
     }
     ImGui::EndDragDropTarget();
   }
+  return dropped;
+}
+
+/// Renders a drag-and-drop field: a label beside a square preview, a
+/// right-click "Remove" context menu, and a drop target that assigns the
+/// dropped asset to the handle. `drawThumbnail` must draw the whole preview
+/// square (including any ImGui::Dummy) at the given size. `onRemove` runs
+/// after the dropped asset is cleared via the context menu. Returns true when
+/// a valid asset was dropped onto the field.
+template <typename AssetType>
+bool assetDragDropField(const char *label, AssetDragPayload::Type type,
+                        AssetManager &assetManager, Handle<AssetType> &handle,
+                        float previewSize = 96.0f,
+                        const std::function<void(float)> &drawThumbnail = {},
+                        const std::function<void()> &onRemove = {}) {
+  ImGui::PushID(("asset_field_" + std::string(label)).c_str());
+
+  ImVec2 labelSize = ImGui::CalcTextSize(label);
+  const float labelOffsetY = (previewSize - labelSize.y) * 0.5f;
+
+  ImVec2 rowCursor = ImGui::GetCursorPos();
+  ImGui::SetCursorPos(ImVec2(rowCursor.x, rowCursor.y + labelOffsetY));
+  ImGui::TextUnformatted(label);
+  ImGui::SetCursorPos(
+      ImVec2(rowCursor.x + labelSize.x + ImGui::GetStyle().ItemSpacing.x,
+             rowCursor.y));
+
+  if (drawThumbnail)
+    drawThumbnail(previewSize);
+
+  if (ImGui::BeginPopupContextItem()) {
+    if (ImGui::Button(("Remove " + std::string(label)).c_str())) {
+      handle = Handle<AssetType>{};
+      if (onRemove)
+        onRemove();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+
+  bool dropped = assetDropTarget(type, assetManager, handle);
+  ImGui::PopID();
   return dropped;
 }
 

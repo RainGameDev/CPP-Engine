@@ -138,8 +138,9 @@ int main() {
   try {
     Application app;
     app.setEditorMode(true);
-    app.add_startup_system(editorStartup);
-    app.addUI([&world = app.getWorld()]() { debugUI(world); }, UIMode::Both);
+  app.add_startup_system(editorStartup);
+  app.addPreTickUI([&world = app.getWorld()]() { topbar(world); });
+  app.addUI([&world = app.getWorld()]() { debugUI(world); }, UIMode::Both);
 
     app.run();
   } catch (const std::exception &e) {

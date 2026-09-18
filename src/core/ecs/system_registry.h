@@ -40,6 +40,6 @@ private:
       ECS_CONCAT(func, registrar_instance){};                                  \
   }
 
-#define STARTUP_SYSTEM(func) ECS_SYSTEM(Stage::Startup, func)
+#define STARTUP_SYSTEM(func) ECS_SYSTEM(Stage::Start, func)
 #define UPDATE_SYSTEM(func) ECS_SYSTEM(Stage::Update, func)
 #define FIXED_UPDATE_SYSTEM(func) ECS_SYSTEM(Stage::FixedUpdate, func)

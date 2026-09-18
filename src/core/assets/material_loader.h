@@ -1,6 +1,8 @@
 #pragma once
 #include "asset_loader.h"
 #include "asset_manager.h"
+#include "handle.h"
+#include "shader_loader.h"
 #include "texture_loader.h"
 #include <cstring>
 #include <filesystem>
@@ -16,12 +18,12 @@ struct MaterialPushConstants {
 };
 
 struct MaterialAsset {
-  std::string vertexShader;
-  std::string fragmentShader;
-  std::string albedoPath;
-  std::string normalPath;
-  std::string rmaosPath;
-  std::string parallaxPath;
+  Handle<ShaderAsset> vertexShader;
+  Handle<ShaderAsset> fragmentShader;
+  Handle<TextureAsset> albedo;
+  Handle<TextureAsset> normal;
+  Handle<TextureAsset> rmaos;
+  Handle<TextureAsset> height;
   float parallaxStrength;
   glm::vec4 baseColorFactor;
   float metallicFactor;
@@ -66,35 +68,42 @@ public:
 
     // Convert JSON to asset
     MaterialAsset mat;
-    mat.fragmentShader = json.value("fragmentShader", "sdr_default_model.frag");
-    mat.vertexShader = json.value("vertexShader", "sdr_default_model.vert");
-    mat.albedoPath = json.value("albedoMap", "");
-    mat.normalPath = json.value("normalMap", "");
-    mat.rmaosPath = json.value("rmaosMap", "");
-    mat.parallaxPath = json.value("heightMap", "");
-    mat.parallaxStrength =
-        mat.parallaxPath.empty() ? 0.0f : json.value("parallaxStrength", 0.05f);
+    mat.vertexShader.assetName =
+        std::filesystem::path(
+            json.value("vertexShader", "sdr_default_model.vert"))
+            .generic_string();
+    mat.fragmentShader.assetName =
+        std::filesystem::path(
+            json.value("fragmentShader", "sdr_default_model.frag"))
+            .generic_string();
+    mat.albedo.assetName =
+        std::filesystem::path(json.value("albedoMap", "")).stem().string();
+    mat.normal.assetName =
+        std::filesystem::path(json.value("normalMap", "")).stem().string();
+    mat.rmaos.assetName =
+        std::filesystem::path(json.value("rmaosMap", "")).stem().string();
+    mat.height.assetName =
+        std::filesystem::path(json.value("heightMap", "")).stem().string();
+    mat.parallaxStrength = mat.height.assetName.empty()
+                               ? 0.0f
+                               : json.value("parallaxStrength", 0.05f);
     mat.baseColorFactor =
         parseVec4(json, "baseColorFactor", {1.0f, 1.0f, 1.0f, 1.0f});
     mat.metallicFactor = json.value("metallicFactor", 1.0f);
     mat.roughnessFactor = json.value("roughnessFactor", 1.0f);
 
-    // Look up textures (or use fallback)
-    auto *textures = assetManager.getLoader<TextureAsset>();
-    auto getTexture = [&](const std::string &path) -> TextureAsset & {
-      if (path.empty())
-        return fallbackTexture;
-      // Strip directory and extension: "textures/dirt_albedo.png" ->
-      // "dirt_albedo"
-      std::filesystem::path p(path);
-      auto *t = textures->tryGetAsset(p.stem().string());
-      return t ? *t : fallbackTexture;
-    };
+    // Resolve texture handles (or use fallback)
+    resolve(assetManager, mat.vertexShader);
+    resolve(assetManager, mat.fragmentShader);
+    resolve(assetManager, mat.albedo);
+    resolve(assetManager, mat.normal);
+    resolve(assetManager, mat.rmaos);
+    resolve(assetManager, mat.height);
 
-    auto &albedo = getTexture(mat.albedoPath);
-    auto &normal = getTexture(mat.normalPath);
-    auto &rmaos = getTexture(mat.rmaosPath);
-    auto &heightTex = getTexture(mat.parallaxPath);
+    auto &albedo = mat.albedo ? *mat.albedo.get() : fallbackTexture;
+    auto &normal = mat.normal ? *mat.normal.get() : fallbackTexture;
+    auto &rmaos = mat.rmaos ? *mat.rmaos.get() : fallbackTexture;
+    auto &heightTex = mat.height ? *mat.height.get() : fallbackTexture;
 
     // Allocate descriptor set
     vk::DescriptorSetLayout layouts[] = {materialLayout};

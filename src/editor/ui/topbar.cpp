@@ -2,7 +2,6 @@
 #include "ecs/world.h"
 #include "imgui.h"
 #include "imgui_internal.h"
-#include "ecs/system_registry.h"
 #include "ui/editor.h"
 #include "ui/shared.h"
 #include "imgui_vulkan.h"
@@ -216,9 +215,7 @@ void topbar(World &world) {
       ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
       ImGui::DockBuilderSetNodeSize(dockspaceId, mainViewport->Size);
 
-      ImGuiID right;
-      ImGuiID bottom;
-      ImGuiID central;
+      ImGuiID right, bottom, central;
       ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.25f, &right,
                                   &central);
       ImGui::DockBuilderSplitNode(central, ImGuiDir_Down, 0.25f, &bottom,
@@ -235,4 +232,3 @@ void topbar(World &world) {
 
   ImGui::End();
 }
-UPDATE_SYSTEM(topbar);
