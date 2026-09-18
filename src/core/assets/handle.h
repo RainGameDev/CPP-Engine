@@ -50,12 +50,7 @@ bool assetDropTarget(AssetDragPayload::Type type, AssetManager &assetManager,
   return dropped;
 }
 
-/// Renders a drag-and-drop field: a label beside a square preview, a
-/// right-click "Remove" context menu, and a drop target that assigns the
-/// dropped asset to the handle. `drawThumbnail` must draw the whole preview
-/// square (including any ImGui::Dummy) at the given size. `onRemove` runs
-/// after the dropped asset is cleared via the context menu. Returns true when
-/// a valid asset was dropped onto the field.
+/// Renders a drag and drop field
 template <typename AssetType>
 bool assetDragDropField(const char *label, AssetDragPayload::Type type,
                         AssetManager &assetManager, Handle<AssetType> &handle,
@@ -77,7 +72,7 @@ bool assetDragDropField(const char *label, AssetDragPayload::Type type,
   if (drawThumbnail)
     drawThumbnail(previewSize);
 
-  if (ImGui::BeginPopupContextItem()) {
+  if (ImGui::BeginPopupContextItem("ctx")) {
     if (ImGui::Button(("Remove " + std::string(label)).c_str())) {
       handle = Handle<AssetType>{};
       if (onRemove)

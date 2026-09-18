@@ -1,6 +1,5 @@
 #pragma once
 #include "asset_loader.h"
-#include "asset_manager.h"
 #include "handle.h"
 #include "shader_loader.h"
 #include "texture_loader.h"
@@ -59,15 +58,58 @@ public:
   std::vector<std::string> extensions() const override { return {".mat.json"}; }
 
   MaterialAsset loadAsset(const std::string &path) override {
-    //  Parse JSON
+    MaterialAsset mat = parseJson(path);
+    pathByName[std::filesystem::path(path).stem().string()] = path;
+    resolveAll(mat);
+    allocateDescriptors(mat);
+    writeDescriptors(mat);
+    return mat;
+  }
+
+  void refreshDescriptors(MaterialAsset &mat) {
+    resolve(assetManager, mat.vertexShader);
+    resolve(assetManager, mat.fragmentShader);
+    resolve(assetManager, mat.albedo);
+    resolve(assetManager, mat.normal);
+    resolve(assetManager, mat.rmaos);
+    resolve(assetManager, mat.height);
+    allocateDescriptors(mat);
+    writeDescriptors(mat);
+  }
+
+  void saveAsset(const std::string &name, const MaterialAsset &mat) {
+    auto it = pathByName.find(name);
+    std::string path = it != pathByName.end()
+                           ? it->second
+                           : "assets/materials/" + name + ".json";
+    nlohmann::json j;
+    j["vertexShader"] = mat.vertexShader.assetName;
+    j["fragmentShader"] = mat.fragmentShader.assetName;
+    j["albedoMap"] = mat.albedo.assetName;
+    j["normalMap"] = mat.normal.assetName;
+    j["rmaosMap"] = mat.rmaos.assetName;
+    j["heightMap"] = mat.height.assetName;
+    j["parallaxStrength"] = mat.parallaxStrength;
+    j["baseColorFactor"] = {mat.baseColorFactor.x, mat.baseColorFactor.y,
+                            mat.baseColorFactor.z, mat.baseColorFactor.w};
+    j["metallicFactor"] = mat.metallicFactor;
+    j["roughnessFactor"] = mat.roughnessFactor;
+    std::ofstream out(path);
+    if (!out.is_open())
+      throw std::runtime_error("failed to save material: " + path);
+    out << j.dump(2);
+  }
+
+private:
+  std::unordered_map<std::string, std::string> pathByName;
+
+  MaterialAsset parseJson(const std::string &path) {
     std::ifstream file(path);
     if (!file.is_open())
       throw std::runtime_error("failed to open material: " + path);
     nlohmann::json json;
     file >> json;
-
-    // Convert JSON to asset
-    MaterialAsset mat;
+    MaterialAsset mat{};
     mat.vertexShader.assetName =
         std::filesystem::path(
             json.value("vertexShader", "sdr_default_model.vert"))
@@ -87,77 +129,53 @@ public:
     mat.parallaxStrength = mat.height.assetName.empty()
                                ? 0.0f
                                : json.value("parallaxStrength", 0.05f);
-    mat.baseColorFactor =
-        parseVec4(json, "baseColorFactor", {1.0f, 1.0f, 1.0f, 1.0f});
+    mat.baseColorFactor = parseVec4(json, "baseColorFactor", {1, 1, 1, 1});
     mat.metallicFactor = json.value("metallicFactor", 1.0f);
     mat.roughnessFactor = json.value("roughnessFactor", 1.0f);
+    return mat;
+  }
 
-    // Resolve texture handles (or use fallback)
+  void resolveAll(MaterialAsset &mat) {
     resolve(assetManager, mat.vertexShader);
     resolve(assetManager, mat.fragmentShader);
     resolve(assetManager, mat.albedo);
     resolve(assetManager, mat.normal);
     resolve(assetManager, mat.rmaos);
     resolve(assetManager, mat.height);
+  }
 
+  void allocateDescriptors(MaterialAsset &mat) {
+    vk::DescriptorSetLayout layouts[] = {materialLayout};
+    vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool = descriptorPool,
+                                              .descriptorSetCount = 1,
+                                              .pSetLayouts = layouts};
+    auto sets = vk::raii::DescriptorSets(device, allocInfo);
+    mat.descriptorSet = std::move(sets.front());
+  }
+
+  void writeDescriptors(MaterialAsset &mat) {
     auto &albedo = mat.albedo ? *mat.albedo.get() : fallbackTexture;
     auto &normal = mat.normal ? *mat.normal.get() : fallbackTexture;
     auto &rmaos = mat.rmaos ? *mat.rmaos.get() : fallbackTexture;
     auto &heightTex = mat.height ? *mat.height.get() : fallbackTexture;
-
-    // Allocate descriptor set
-    vk::DescriptorSetLayout layouts[] = {materialLayout};
-    vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool = descriptorPool,
-                                            .descriptorSetCount = 1,
-                                            .pSetLayouts = layouts};
-    auto sets = vk::raii::DescriptorSets(device, allocInfo);
-    mat.descriptorSet = std::move(sets.front());
-
-    // Write descriptor set
-    auto writeImageInfo = [](TextureAsset &tex) {
+    auto info = [](TextureAsset &t) {
       return vk::DescriptorImageInfo{
-          .sampler = *tex.sampler,
-          .imageView = *tex.imageView,
+          .sampler = *t.sampler,
+          .imageView = *t.imageView,
           .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
     };
-
-    vk::DescriptorImageInfo albedoInfo = writeImageInfo(albedo);
-    vk::DescriptorImageInfo normalInfo = writeImageInfo(normal);
-    vk::DescriptorImageInfo rmaosInfo = writeImageInfo(rmaos);
-    vk::DescriptorImageInfo heightInfo = writeImageInfo(heightTex);
-
-    std::array<vk::WriteDescriptorSet, 4> writes{{
-        // Albedo
-        {.dstSet = *mat.descriptorSet,
-         .dstBinding = 0,
-         .descriptorCount = 1,
-         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-         .pImageInfo = &albedoInfo},
-        // Normal
-        {.dstSet = *mat.descriptorSet,
-         .dstBinding = 1,
-         .descriptorCount = 1,
-         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-         .pImageInfo = &normalInfo},
-        // RMAOS
-        {.dstSet = *mat.descriptorSet,
-         .dstBinding = 2,
-         .descriptorCount = 1,
-         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-         .pImageInfo = &rmaosInfo},
-        // Height (parallax)
-        {.dstSet = *mat.descriptorSet,
-         .dstBinding = 3,
-         .descriptorCount = 1,
-         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-         .pImageInfo = &heightInfo},
-    }};
+    vk::DescriptorImageInfo infos[4] = {info(albedo), info(normal), info(rmaos),
+                                        info(heightTex)};
+    std::array<vk::WriteDescriptorSet, 4> writes{};
+    for (int i = 0; i < 4; i++)
+      writes[i] = {.dstSet = *mat.descriptorSet,
+                   .dstBinding = (uint32_t)i,
+                   .descriptorCount = 1,
+                   .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                   .pImageInfo = &infos[i]};
     device.updateDescriptorSets(writes, nullptr);
-
-    return mat;
   }
 
-private:
   glm::vec4 parseVec4(const nlohmann::json &j, const std::string &key,
                       glm::vec4 fallback) {
     if (!j.contains(key) || !j[key].is_array() || j[key].size() != 4)
@@ -169,7 +187,6 @@ private:
     uint32_t pixel = 0xFFFFFFFF;
     vk::DeviceSize imageSize = sizeof(pixel);
 
-    // Create staging buffer
     vk::BufferCreateInfo bufInfo{.size = imageSize,
                                  .usage = vk::BufferUsageFlagBits::eTransferSrc,
                                  .sharingMode = vk::SharingMode::eExclusive};
@@ -189,18 +206,17 @@ private:
     memcpy(mapped, &pixel, imageSize);
     stagingMem.unmapMemory();
 
-    // Create 1x1 image
     vk::ImageCreateInfo imageInfo{.imageType = vk::ImageType::e2D,
-                                  .format = vk::Format::eR8G8B8A8Srgb,
-                                  .extent = {1, 1, 1},
-                                  .mipLevels = 1,
-                                  .arrayLayers = 1,
-                                  .samples = vk::SampleCountFlagBits::e1,
-                                  .tiling = vk::ImageTiling::eOptimal,
-                                  .usage = vk::ImageUsageFlagBits::eSampled |
-                                           vk::ImageUsageFlagBits::eTransferDst,
-                                  .sharingMode = vk::SharingMode::eExclusive,
-                                  .initialLayout = vk::ImageLayout::eUndefined};
+                                    .format = vk::Format::eR8G8B8A8Srgb,
+                                    .extent = {1, 1, 1},
+                                    .mipLevels = 1,
+                                    .arrayLayers = 1,
+                                    .samples = vk::SampleCountFlagBits::e1,
+                                    .tiling = vk::ImageTiling::eOptimal,
+                                    .usage = vk::ImageUsageFlagBits::eSampled |
+                                             vk::ImageUsageFlagBits::eTransferDst,
+                                    .sharingMode = vk::SharingMode::eExclusive,
+                                    .initialLayout = vk::ImageLayout::eUndefined};
     fallbackTexture.image = vk::raii::Image(device, imageInfo);
 
     auto imgMemReq = fallbackTexture.image.getMemoryRequirements();
@@ -212,14 +228,12 @@ private:
     fallbackTexture.memory = vk::raii::DeviceMemory(device, imgAllocInfo);
     fallbackTexture.image.bindMemory(*fallbackTexture.memory, 0);
 
-    // Transition Undefined -> TransferDst, copy, transition -> ShaderReadOnly
     transitionImage(fallbackTexture.image, vk::ImageLayout::eUndefined,
                     vk::ImageLayout::eTransferDstOptimal);
     copyBufferToImage(stagingBuf, fallbackTexture.image, 1, 1);
     transitionImage(fallbackTexture.image, vk::ImageLayout::eTransferDstOptimal,
                     vk::ImageLayout::eShaderReadOnlyOptimal);
 
-    // ImageView
     fallbackTexture.imageView = vk::raii::ImageView(
         device,
         vk::ImageViewCreateInfo{
@@ -230,7 +244,6 @@ private:
                                  .levelCount = 1,
                                  .layerCount = 1}});
 
-    // Sampler
     fallbackTexture.sampler = vk::raii::Sampler(
         device,
         vk::SamplerCreateInfo{.magFilter = vk::Filter::eNearest,
@@ -268,12 +281,12 @@ private:
                              .levelCount = 1,
                              .layerCount = 1}};
     vk::DependencyInfo depInfo{.imageMemoryBarrierCount = 1,
-                               .pImageMemoryBarriers = &barrier};
+                                  .pImageMemoryBarriers = &barrier};
     cmd.pipelineBarrier2(depInfo);
     cmd.end();
 
     vk::SubmitInfo submitInfo{.commandBufferCount = 1,
-                              .pCommandBuffers = &*cmd};
+                                .pCommandBuffers = &*cmd};
     queue.submit(submitInfo, nullptr);
     queue.waitIdle();
   }
@@ -296,7 +309,7 @@ private:
 
     cmd.end();
     vk::SubmitInfo submitInfo{.commandBufferCount = 1,
-                              .pCommandBuffers = &*cmd};
+                                .pCommandBuffers = &*cmd};
     queue.submit(submitInfo, nullptr);
     queue.waitIdle();
   }

@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <vector>
 
+class AssetManager; // fwd: avoid asset_loader <-> asset_manager cycle
+
 class IAssetLoader {
 public:
   virtual ~IAssetLoader() = default;
@@ -15,6 +17,8 @@ public:
   };
 
   virtual std::vector<AssetEntry> getAllAssetEntries() const = 0;
+  virtual bool owns(const std::string &) const { return false; }
+  virtual void inspect(const std::string &, AssetManager &) {}
 };
 
 template <typename AssetType> class AssetLoader : public IAssetLoader {
@@ -37,6 +41,8 @@ public:
   AssetType &registerAsset(const std::string &name, AssetType value) {
     return assets[name] = std::move(value);
   }
+
+  bool owns(const std::string &name) const override { return assets.contains(name); }
 
   /// Gets asset by name (e.g. "sdr_default_model.vert.spv")
   AssetType &getAsset(const std::string &name) { return assets[name]; }
