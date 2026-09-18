@@ -250,7 +250,7 @@ namespace ImViewGuizmo {
     inline bool Rotate(vec3_t& cameraPos, quat_t& cameraRot, const vec3_t& pivot, ImVec2 position, float rotationSpeed ) {
         
         auto& io = ImGui::GetIO();
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
         auto& ctx = GetContext();
         auto& style = GetStyle();
         bool wasModified = false;
@@ -505,7 +505,7 @@ namespace ImViewGuizmo {
     inline bool Dolly(vec3_t& cameraPos, const quat_t& cameraRot, const ImVec2 position, const float zoomSpeed) {
         
         const ImGuiIO& io = ImGui::GetIO();
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
         auto& ctx = GetContext();
         const Style& style = GetStyle();
         bool wasModified = false;
@@ -569,7 +569,7 @@ namespace ImViewGuizmo {
     inline bool Pan(vec3_t& cameraPos, const quat_t& cameraRot, const ImVec2 position, const float panSpeed) {
         
         const ImGuiIO& io = ImGui::GetIO();
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
         auto& ctx = GetContext();
         const Style& style = GetStyle();
         bool wasModified = false;

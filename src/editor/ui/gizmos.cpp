@@ -48,7 +48,7 @@ void gizmos(World &world) {
                ImGuiWindowFlags_NoBackground |
                    ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGuizmo::SetAlternativeWindow(ImGui::GetCurrentWindow());
-  ImGuizmo::SetDrawlist();
+  ImGuizmo::SetDrawlist(ImGui::GetForegroundDrawList());
 
   ImVec2 contentMin = ImGui::GetWindowContentRegionMin();
   ImVec2 contentMax = ImGui::GetWindowContentRegionMax();
@@ -149,7 +149,9 @@ static void drawClippedSegment(ImDrawList *drawList, const glm::vec3 &a,
 void drawLightGizmos(World &world, EditorStatus *status, const glm::mat4 &view,
                      const glm::mat4 &proj, ImVec2 rectPos, ImVec2 rectSize) {
   glm::mat4 viewProj = proj * view;
-  ImDrawList *drawList = ImGui::GetWindowDrawList();
+  ImDrawList *drawList = ImGui::GetForegroundDrawList();
+  drawList->PushClipRect(
+      rectPos, {rectPos.x + rectSize.x, rectPos.y + rectSize.y}, true);
 
   Query<TransformComponent, LightComponent> lightQuery(world);
   lightQuery.for_each([&](EntityId id, TransformComponent &tc,
@@ -270,6 +272,7 @@ void drawLightGizmos(World &world, EditorStatus *status, const glm::mat4 &view,
       }
     }
   });
+  drawList->PopClipRect();
 }
 
 static void drawViewGizmo(World &world, const glm::vec3 &pivot, ImVec2 rectPos,
@@ -279,8 +282,10 @@ static void drawViewGizmo(World &world, const glm::vec3 &pivot, ImVec2 rectPos,
     return;
 
   ImViewGuizmo::BeginFrame();
-  // anchoring
-  ImVec2 gizmoPos(rectPos.x + rectSize.x - 130.0f, rectPos.y + 90.0f);
+  float half = 128.0f * ImViewGuizmo::GetStyle().scale;
+  const float margin = 10.0f;
+  ImVec2 gizmoPos(rectPos.x + rectSize.x - half - margin,
+                  rectPos.y + half + margin);
 
   if (ImViewGuizmo::Rotate(editorCam->transform.position,
                            editorCam->transform.rotation, pivot, gizmoPos)) {

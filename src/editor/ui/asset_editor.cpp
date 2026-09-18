@@ -1,7 +1,7 @@
 #include "assets/asset_manager.h"
-#include "assets/material_loader.h"
-#include "assets/handle.h"
 #include "assets/asset_payload.h"
+#include "assets/handle.h"
+#include "assets/material_loader.h"
 #include "ecs/system_registry.h"
 #include "ecs/world.h"
 #include "imgui.h"
@@ -19,8 +19,7 @@ void editMaterial(AssetManager &am, AssetLoader<MaterialAsset> *loader,
     if (prev)
       resolve(am, h);
     bool changed = assetDragDropField(
-        label, AssetDragPayload::Texture, am, h, 64.0f,
-        [&](float s) {
+        label, AssetDragPayload::Texture, am, h, 64.0f, [&](float s) {
           TextureAsset *t = h ? texLoader->tryGetAsset(h.assetName) : nullptr;
           if (t && t->imguiDS)
             ImGui::Image((ImTextureID)t->imguiDS, ImVec2(s, s));
