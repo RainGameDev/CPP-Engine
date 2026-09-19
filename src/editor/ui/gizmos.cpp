@@ -253,7 +253,7 @@ void drawLightGizmos(World &world, EditorStatus *status, const glm::mat4 &view,
       glm::vec3 dir = glm::normalize(tc.rotation * glm::vec3(0, 0, -1));
       glm::vec3 right = glm::normalize(glm::cross(dir, glm::vec3(0, 1, 0)));
       glm::vec3 up = glm::cross(right, dir);
-      float coneRadius = tanf(glm::radians(spot->angle)) * spot->length;
+      float coneRadius = tanf(glm::radians(spot->angle * 0.5f)) * spot->length;
 
       glm::vec3 tip = tc.position + dir * spot->length;
       const int segments = 24;

@@ -10,10 +10,14 @@
 #include "imgui_impl_vulkan.h"
 #include "rendering/ubo.h"
 #include "vulkan/vulkan.hpp"
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
+#include <vector>
 
 void VulkanRenderingContext::init(GLFWwindow *window, World &ecsWorld) {
   this->window = window;
@@ -106,64 +110,153 @@ void VulkanRenderingContext::ensureTransformBuffer(uint32_t frame,
   device.updateDescriptorSets(write, nullptr);
 }
 
-void VulkanRenderingContext::updateLightBuffer(uint32_t frame) {
-  LightsUBO lightsubo{};
-  lightsubo.count = 0;
+namespace {
+int shadowTypePriority(const LightType &t) {
+  if (std::holds_alternative<Directional>(t))
+    return 0;
+  if (std::holds_alternative<Spot>(t))
+    return 1;
+  return 2;
+}
 
+glm::vec3 shadowUpFor(glm::vec3 dir) {
+  return fabs(glm::dot(dir, glm::vec3(0, 1, 0))) > 0.99f ? glm::vec3(0, 0, 1)
+                                                         : glm::vec3(0, 1, 0);
+}
+
+glm::vec3 safeNormalize(glm::vec3 v, glm::vec3 fallback) {
+  float len = glm::length(v);
+  return len > 1e-6f ? v / len : fallback;
+}
+
+ShadowData makeShadowData(LightComponent &lc, TransformComponent &tc) {
+  ShadowData d{};
+  glm::vec3 fwd = tc.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+  glm::vec3 dir = safeNormalize(fwd, glm::vec3(0, -1, 0));
+
+  if (std::holds_alternative<Directional>(lc.lightType)) {
+    float extent = lc.shadowExtent > 0.0f ? lc.shadowExtent : 20.0f;
+    float nearP = lc.shadowNear > 0.0f ? lc.shadowNear : 0.5f;
+    float farP = lc.shadowFar > nearP ? lc.shadowFar : nearP + 1.0f;
+    glm::vec3 pos = -dir * 40.0f;
+    glm::mat4 proj =
+        glm::orthoZO(-extent, extent, -extent, extent, nearP, farP);
+    proj[1][1] *= -1;
+    glm::mat4 view = glm::lookAt(pos, glm::vec3(0), shadowUpFor(dir));
+    d.viewProj = proj * view;
+    d.pos_far = glm::vec4(pos, farP);
+    d.dir_type = glm::vec4(dir, 0.0f);
+  } else if (std::holds_alternative<Spot>(lc.lightType)) {
+    auto &spot = std::get<Spot>(lc.lightType);
+    glm::vec3 pos = tc.position;
+    float nearP = lc.shadowNear > 0.0f ? lc.shadowNear : 0.1f;
+    float farP = spot.length > nearP ? spot.length : nearP + 1.0f;
+    float fov = glm::clamp(spot.angle + 2.0f, 1.0f, 179.0f);
+    glm::mat4 proj = glm::perspectiveZO(glm::radians(fov), 1.0f, nearP, farP);
+    proj[1][1] *= -1;
+    glm::mat4 view = glm::lookAt(pos, pos + dir, shadowUpFor(dir));
+    d.viewProj = proj * view;
+    d.pos_far = glm::vec4(pos, farP);
+    d.dir_type = glm::vec4(dir, 1.0f);
+  } else {
+    glm::vec3 pos = tc.position;
+    float farP = std::get<Point>(lc.lightType).radius;
+    if (farP <= 0.0f)
+      farP = lc.shadowFar;
+    d.viewProj = glm::mat4(1.0f);
+    d.pos_far = glm::vec4(pos, farP);
+    d.dir_type = glm::vec4(dir, 2.0f);
+  }
+  return d;
+}
+} // namespace
+void VulkanRenderingContext::updateLightBuffer(uint32_t frame) {
+  struct Entry {
+    LightComponent *lc;
+    TransformComponent *tc;
+  };
+  std::vector<Entry> entries;
   Query<LightComponent, TransformComponent> lightQuery(*world);
   lightQuery.for_each(
-      [&](EntityId id, LightComponent &lc, TransformComponent &tc) {
-        if (lightsubo.count >= MAX_LIGHTS)
+      [&](EntityId, LightComponent &lc, TransformComponent &tc) {
+        if (entries.size() >= MAX_LIGHTS)
           return;
-        auto &l = lightsubo.lights[lightsubo.count];
-        glm::vec3 forward = tc.rotation * glm::vec3(0.0f, 0.0f, -1.0f);
-
-        if (std::holds_alternative<Directional>(lc.lightType)) {
-          l.positionOrDirection = glm::vec4(glm::normalize(tc.position), 0.0f);
-          l.direction = glm::vec4(forward, 0.0f);
-        } else if (std::holds_alternative<Point>(lc.lightType)) {
-          l.positionOrDirection = glm::vec4(tc.position, 1.0f);
-          l.params.x = std::get<Point>(lc.lightType).radius;
-          l.direction = glm::vec4(forward, 1.0f);
-        } else if (std::holds_alternative<Spot>(lc.lightType)) {
-          l.positionOrDirection = glm::vec4(tc.position, 2.0f);
-          l.direction = glm::vec4(forward, 1.0f);
-          auto &spot = std::get<Spot>(lc.lightType);
-          l.params.x = spot.angle;
-          l.params.y = spot.length;
-        }
-        l.colorAndIntensity = glm::vec4(lc.color, lc.intensity);
-        lightsubo.count++;
+        entries.push_back({&lc, &tc});
       });
+
+  // Assign shadow slots in priority order (dir > spot > point)
+  std::vector<int> order(entries.size());
+  for (size_t i = 0; i < order.size(); ++i)
+    order[i] = (int)i;
+  std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+    return shadowTypePriority(entries[a].lc->lightType) <
+           shadowTypePriority(entries[b].lc->lightType);
+  });
+  std::vector<int> shadowIdx(entries.size(), -1);
+  int sCount = 0;
+  for (int i : order) {
+    if (entries[i].lc->castShadow && sCount < (int)MAX_SHADOWS)
+      shadowIdx[i] = sCount++;
+  }
+
+  LightsUBO lightsubo{};
+  for (size_t i = 0; i < entries.size(); ++i) {
+    auto *lc = entries[i].lc;
+    auto *tc = entries[i].tc;
+    auto &l = lightsubo.lights[lightsubo.count];
+    glm::vec3 forward = tc->rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+
+    if (std::holds_alternative<Directional>(lc->lightType)) {
+      l.positionOrDirection = glm::vec4(glm::normalize(tc->position), 0.0f);
+      l.direction = glm::vec4(forward, 0.0f);
+    } else if (std::holds_alternative<Point>(lc->lightType)) {
+      l.positionOrDirection = glm::vec4(tc->position, 1.0f);
+      l.params.x = std::get<Point>(lc->lightType).radius;
+      l.direction = glm::vec4(forward, 1.0f);
+    } else if (std::holds_alternative<Spot>(lc->lightType)) {
+      l.positionOrDirection = glm::vec4(tc->position, 2.0f);
+      l.direction = glm::vec4(forward, 1.0f);
+      auto &spot = std::get<Spot>(lc->lightType);
+      l.params.x = spot.angle;
+      l.params.y = spot.length;
+    }
+    l.colorAndIntensity = glm::vec4(lc->color, lc->intensity);
+    l.shadowInfo = glm::vec4((float)shadowIdx[i], lc->shadowBias,
+                             lc->shadowNear, lc->shadowFar);
+    lightsubo.count++;
+  }
 
   memcpy(lightBuffers[frame].mapped, &lightsubo, sizeof(lightsubo));
 }
 
 void VulkanRenderingContext::updateShadowBuffer(uint32_t frame) {
-  ShadowUBO shadowubo{};
-  shadowubo.lightViewProj = glm::mat4(1.0f);
-
-  glm::vec3 lightPos(10, 20, 10);
-  glm::vec3 lightDir(0, -1, 0);
-  bool found = false;
+  struct Entry {
+    LightComponent *lc;
+    TransformComponent *tc;
+  };
+  std::vector<Entry> entries;
   Query<LightComponent, TransformComponent> lightQuery(*world);
   lightQuery.for_each(
       [&](EntityId, LightComponent &lc, TransformComponent &tc) {
-        if (found || !std::holds_alternative<Directional>(lc.lightType))
-          return;
-        glm::vec3 fwd = tc.rotation * glm::vec3(0, 0, -1);
-        lightDir = glm::normalize(fwd);
-        lightPos = -lightDir * 40.0f;
-        found = true;
+        entries.push_back({&lc, &tc});
       });
+  std::stable_sort(entries.begin(), entries.end(),
+                   [](const Entry &a, const Entry &b) {
+                     return shadowTypePriority(a.lc->lightType) <
+                            shadowTypePriority(b.lc->lightType);
+                   });
 
-  glm::vec3 up = fabs(glm::dot(lightDir, glm::vec3(0, 1, 0))) > 0.99f
-                     ? glm::vec3(0, 0, 1)
-                     : glm::vec3(0, 1, 0);
-  glm::mat4 proj = glm::orthoZO(-20.f, 20.f, -20.f, 20.f, 1.f, 96.f);
-  proj[1][1] *= -1;
-  glm::mat4 view = glm::lookAt(lightPos, glm::vec3(0), up);
-  shadowubo.lightViewProj = proj * view;
+  ShadowUBO shadowubo{};
+  shadowubo.shadows[0].viewProj = glm::mat4(1.0f);
+  shadowubo.count = 0;
+  for (auto &e : entries) {
+    if (!e.lc->castShadow)
+      continue;
+    if (shadowubo.count >= MAX_SHADOWS)
+      break;
+    shadowubo.shadows[shadowubo.count] = makeShadowData(*e.lc, *e.tc);
+    shadowubo.count++;
+  }
 
   memcpy(shadowBuffers[frame].mapped, &shadowubo, sizeof(shadowubo));
 }
@@ -237,14 +330,15 @@ void VulkanRenderingContext::createDepthResources() {
 }
 
 void VulkanRenderingContext::createShadowResources() {
+  shadowLayerViews.clear();
 
-  // create image
+  // create image 2D array, one layer per shadow slot
   vk::ImageCreateInfo imageInfo{
       .imageType = vk::ImageType::e2D,
       .format = depthFormat,
       .extent = {shadowExtent.width, shadowExtent.height, 1},
       .mipLevels = 1,
-      .arrayLayers = 1,
+      .arrayLayers = MAX_SHADOWS,
       .samples = vk::SampleCountFlagBits::e1,
       .tiling = vk::ImageTiling::eOptimal,
       .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment |
@@ -263,25 +357,39 @@ void VulkanRenderingContext::createShadowResources() {
   shadowDepthMemory = vk::raii::DeviceMemory(device, allocInfo);
   shadowDepthImage.bindMemory(*shadowDepthMemory, 0);
 
-  // create view
-  vk::ImageViewCreateInfo viewInfo{
+  // array view for sampling in frag shaders
+  vk::ImageViewCreateInfo arrayViewInfo{
       .image = *shadowDepthImage,
-      .viewType = vk::ImageViewType::e2D,
+      .viewType = vk::ImageViewType::e2DArray,
       .format = depthFormat,
       .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
                            .baseMipLevel = 0,
                            .levelCount = 1,
                            .baseArrayLayer = 0,
-                           .layerCount = 1}};
-  shadowDepthView = vk::raii::ImageView(device, viewInfo);
+                           .layerCount = MAX_SHADOWS}};
+  shadowDepthView = vk::raii::ImageView(device, arrayViewInfo);
+
+  // perlayer views for depth rendering
+  for (uint32_t i = 0; i < MAX_SHADOWS; ++i) {
+    vk::ImageViewCreateInfo layerViewInfo{
+        .image = *shadowDepthImage,
+        .viewType = vk::ImageViewType::e2D,
+        .format = depthFormat,
+        .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
+                             .baseMipLevel = 0,
+                             .levelCount = 1,
+                             .baseArrayLayer = i,
+                             .layerCount = 1}};
+    shadowLayerViews.emplace_back(device, layerViewInfo);
+  }
 
   // create sampler
   shadowSampler = vk::raii::Sampler(
-      device, {.magFilter = vk::Filter::eNearest,
-               .minFilter = vk::Filter::eNearest,
+      device, {.magFilter = vk::Filter::eLinear,
+               .minFilter = vk::Filter::eLinear,
                .mipmapMode = vk::SamplerMipmapMode::eNearest,
-               .addressModeU = vk::SamplerAddressMode::eClampToEdge,
-               .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+               .addressModeU = vk::SamplerAddressMode::eClampToBorder,
+               .addressModeV = vk::SamplerAddressMode::eClampToBorder,
                .addressModeW = vk::SamplerAddressMode::eClampToEdge,
                .borderColor = vk::BorderColor::eFloatOpaqueWhite});
 }
@@ -397,6 +505,7 @@ void VulkanRenderingContext::cleanupViewportResources() {
 
 void VulkanRenderingContext::cleanupShadowResources() {
   shadowSampler = nullptr;
+  shadowLayerViews.clear();
   shadowDepthView = nullptr;
   shadowDepthImage = nullptr;
   shadowDepthMemory = nullptr;

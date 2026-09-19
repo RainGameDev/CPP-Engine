@@ -10,10 +10,6 @@ layout(set = 0, binding = 1) uniform TransformBufferObject {
     mat4 model;
 } transform;
 
-layout(set = 0, binding = 3) uniform ShadowUBO {
-    mat4 lightViewProj;
-} shadow;
-
 layout(location = 0) in vec3 inPos;
 layout(location = 1) in vec3 inColor;
 layout(location = 2) in vec2 inUV;
@@ -26,7 +22,6 @@ layout(location = 2) out vec3 fragTangent;
 layout(location = 3) out vec3 fragBitangent;
 layout(location = 4) out vec3 fragNormal;
 layout(location = 5) out vec3 fragWorldPos;
-layout(location = 6) out vec4 fragLightSpace;
 
 void main() {
     mat4 model = transform.model;
@@ -44,5 +39,5 @@ void main() {
     fragTangent   = T;
     fragBitangent = B;
     fragNormal = N;
-fragLightSpace = shadow.lightViewProj * worldPos;
+
 }

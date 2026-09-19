@@ -387,7 +387,7 @@ private:
     makeBuffer(previewCamera.shadowBuffer, previewCamera.shadowMemory,
                previewCamera.shadowMapped, sizeof(ShadowUBO));
     ShadowUBO ident{};
-    ident.lightViewProj = glm::mat4(1.0f);
+    ident.shadows[0].viewProj = glm::mat4(1.0f);
     memcpy(previewCamera.shadowMapped, &ident, sizeof(ident));
 
     previewCamera.dummySampler = vk::raii::Sampler(
@@ -398,13 +398,14 @@ private:
                  .addressModeW = vk::SamplerAddressMode::eClampToEdge});
     previewCamera.dummyImage =
         vk::raii::Image(device, {.imageType = vk::ImageType::e2D,
-                                 .format = vk::Format::eR8G8B8A8Unorm,
+                                 .format = vk::Format::eD32Sfloat,
                                  .extent = {1, 1, 1},
                                  .mipLevels = 1,
-                                 .arrayLayers = 1,
+                                 .arrayLayers = MAX_SHADOWS,
                                  .samples = vk::SampleCountFlagBits::e1,
                                  .tiling = vk::ImageTiling::eOptimal,
-                                 .usage = vk::ImageUsageFlagBits::eSampled,
+                                 .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment |
+                                          vk::ImageUsageFlagBits::eSampled,
                                  .initialLayout = vk::ImageLayout::eUndefined});
     auto m = previewCamera.dummyImage.getMemoryRequirements();
     previewCamera.dummyMemory = vk::raii::DeviceMemory(
@@ -416,11 +417,12 @@ private:
     previewCamera.dummyView = vk::raii::ImageView(
         device,
         {.image = *previewCamera.dummyImage,
-         .viewType = vk::ImageViewType::e2D,
-         .format = vk::Format::eR8G8B8A8Unorm,
-         .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+         .viewType = vk::ImageViewType::e2DArray,
+         .format = vk::Format::eD32Sfloat,
+         .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
                               .levelCount = 1,
-                              .layerCount = 1}});
+                              .baseArrayLayer = 0,
+                              .layerCount = MAX_SHADOWS}});
 
     {
       vk::CommandBufferBeginInfo bi{
@@ -435,11 +437,12 @@ private:
           .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
           .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
           .oldLayout = vk::ImageLayout::eUndefined,
-          .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+          .newLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal,
           .image = *previewCamera.dummyImage,
-          .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+          .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
                                .levelCount = 1,
-                               .layerCount = 1}};
+                               .baseArrayLayer = 0,
+                               .layerCount = MAX_SHADOWS}};
       c.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1,
                                             .pImageMemoryBarriers = &b});
       c.end();
@@ -482,7 +485,7 @@ private:
     vk::DescriptorImageInfo dummyImageInfo{
         .sampler = *previewCamera.dummySampler,
         .imageView = *previewCamera.dummyView,
-        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+        .imageLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal};
 
     std::array<vk::WriteDescriptorSet, 5> writes = {{
         {.dstSet = previewCamera.set,
@@ -520,6 +523,7 @@ private:
     lights.lights[0].direction =
         glm::vec4(-glm::normalize(glm::vec3(0.5f, 0.8f, 0.6f)), 0.0f);
     lights.lights[0].colorAndIntensity = glm::vec4(1.0f, 1.0f, 1.0f, 1.5f);
+    lights.lights[0].shadowInfo = glm::vec4(-1.0f, 0.005f, 0.5f, 96.0f);
     memcpy(previewCamera.lightMapped, &lights, sizeof(lights));
   }
 

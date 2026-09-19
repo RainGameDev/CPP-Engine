@@ -7,7 +7,6 @@ layout(location = 2) in vec3 fragTangent;
 layout(location = 3) in vec3 fragBitangent;
 layout(location = 4) in vec3 fragNormal;
 layout(location = 5) in vec3 fragWorldPos;
-layout(location = 6) in vec4 fragLightSpace;
 
 layout(location = 0) out vec4 outColor;
 
@@ -15,7 +14,7 @@ layout(set = 1, binding = 0) uniform sampler2D albedoMap;
 layout(set = 1, binding = 1) uniform sampler2D normalMap;
 layout(set = 1, binding = 2) uniform sampler2D rmaosMap;
 layout(set = 1, binding = 3) uniform sampler2D heightMap;
-layout(set = 0, binding = 4) uniform sampler2D shadowMap;
+layout(set = 0, binding = 4) uniform sampler2DArray shadowMaps;
 
 layout(push_constant) uniform MaterialParams {
     vec4 baseColorFactor;
@@ -36,12 +35,24 @@ struct LightData {
     vec4 colorAndIntensity;
     vec4 params;
     vec4 direction;
+    vec4 shadowInfo;
 };
 
 layout(set = 0, binding = 2) uniform LightsBuffer {
     LightData lights[16];
     uint count;
 } lightsUBO;
+
+struct ShadowData {
+    mat4 viewProj;
+    vec4 pos_far;
+    vec4 dir_type;
+};
+
+layout(set = 0, binding = 3) uniform ShadowUBO {
+    ShadowData shadows[4];
+    uint count;
+} shadowUBO;
 
 
 const float PI = 3.1415;
@@ -101,13 +112,23 @@ vec2 parallaxOcclusionMapping(vec2 texCoords, vec3 viewDir, vec2 dx, vec2 dy) {
 }
 
 
-float shadowFactor() {
-    vec3 proj = fragLightSpace.xyz / fragLightSpace.w;
-    proj.xy = proj.xy * 0.5 + 0.5;
-    if (proj.z > 1.0 || proj.x < 0.0 || proj.x > 1.0 || proj.y < 0.0 || proj.y > 1.0)
+float shadowFor(int slot, vec3 worldPos, float bias) {
+    if (slot < 0 || slot >= 4 || uint(slot) >= shadowUBO.count)
         return 1.0;
-    float closest = texture(shadowMap, proj.xy).r;
-    return (proj.z - 0.005 > closest) ? 0.2 : 1.0;
+    // point lights have no depth layer yet
+    if (shadowUBO.shadows[slot].dir_type.w > 1.5)
+        return 1.0;
+    vec4 p = shadowUBO.shadows[slot].viewProj * vec4(worldPos, 1.0);
+    if (p.w <= 0.0)
+        return 1.0;
+    p.xyz /= p.w;
+    if (p.z < 0.0 || p.z > 1.0)
+        return 1.0;
+    vec2 uv = p.xy * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+        return 1.0;
+    float closest = texture(shadowMaps, vec3(uv, slot)).r;
+    return (p.z - bias > closest) ? 0.2 : 1.0;
 }
 
 
@@ -148,21 +169,24 @@ void main() {
       L = normalize(-light.direction.xyz);
     } else if (light.positionOrDirection.w < 1.5) {
       vec3 toLight = light.positionOrDirection.xyz - fragWorldPos;
-      L = normalize(toLight);
       float dist = length(toLight);
-      float radius = light.params.x;
-      intensity *= 1.0 / (1.0 + dist * dist / (radius * radius));
+      float radius = max(light.params.x, 0.0001);
+      L = dist > 0.000001 ? toLight / dist : vec3(0.0, 1.0, 0.0);
+      float u = clamp(1.0 - (dist * dist) / (radius * radius), 0.0, 1.0);
+      intensity *= u * u;
     } else {
+      vec3 spotDir = normalize(light.direction.xyz);
       vec3 toLight = light.positionOrDirection.xyz - fragWorldPos;
       float dist = length(toLight);
-      L = normalize(toLight);
-
-      vec3 spotDir = normalize(light.direction.xyz);
+      L = dist > 0.000001 ? toLight / dist : -spotDir;
       float cosAngle = dot(-L, spotDir);
-      float outer = cos(radians(light.params.x * 0.5));
-      float inner = cos(radians(light.params.x * 0.25));
+      float outerHalf = radians(light.params.x * 0.5);
+      float outer = cos(outerHalf);
+      float inner = cos(outerHalf * 0.8);
       intensity *= smoothstep(outer, inner, cosAngle);
-      intensity *= 1.0 / (1.0 + dist * dist / (light.params.y * light.params.y));
+      float range = max(light.params.y, 0.0001);
+      float su = clamp(1.0 - (dist * dist) / (range * range), 0.0, 1.0);
+      intensity *= su * su;
     }
 
     vec3 H = normalize(V + L);
@@ -179,10 +203,9 @@ void main() {
     vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 
     float NdotL = max(dot(N, L), 0.0);
-    Lo += (kD * albedo.rgb / PI + specular) * lightColor * intensity * NdotL;
+    float sh = shadowFor(int(light.shadowInfo.x + 0.5), fragWorldPos, light.shadowInfo.y);
+    Lo += (kD * albedo.rgb / PI + specular) * lightColor * intensity * NdotL * sh;
   }
-
-  Lo *= shadowFactor();
   vec3 ambient = vec3(0.03) * albedo.rgb * ao;
   outColor = vec4(ambient + Lo, 1.0);
 }

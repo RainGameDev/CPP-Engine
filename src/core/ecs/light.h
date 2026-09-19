@@ -70,10 +70,15 @@ inline void from_json(const nlohmann::json &j, LightType &l) {
 struct LightComponent : Component<LightComponent> {
 public:
   LightType lightType;
-  float intensity;
-  glm::vec3 color;
+  float intensity = 1.0f;
+  glm::vec3 color{1.0f};
 
-  bool isEmitting;
+  bool isEmitting = true;
+  bool castShadow = true;
+  float shadowNear = 0.5f;
+  float shadowFar = 96.0f;
+  float shadowBias = 0.005f;
+  float shadowExtent = 20.0f;
 
   void inspect(World &, EntityId) {
     ImGui::ColorEdit3("Color", &color.x);
@@ -100,9 +105,20 @@ public:
       ImGui::DragFloat("Length", &std::get<Spot>(lightType).length, 0.1f, 0.0f,
                        1000.0f);
     }
+
+    ImGui::Checkbox("Cast Shadow", &castShadow);
+    if (castShadow) {
+      ImGui::DragFloat("Shadow Near", &shadowNear, 0.05f, 0.01f, 10.0f);
+      ImGui::DragFloat("Shadow Far", &shadowFar, 1.0f, 1.0f, 500.0f);
+      ImGui::DragFloat("Shadow Bias", &shadowBias, 0.0005f, 0.0f, 0.05f);
+      if (std::holds_alternative<Directional>(lightType)) {
+        ImGui::DragFloat("Shadow Extent", &shadowExtent, 0.5f, 1.0f, 100.0f);
+      }
+    }
   }
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(LightComponent, lightType, intensity, color,
-                                 isEmitting);
+                                 isEmitting, castShadow, shadowNear, shadowFar,
+                                 shadowBias, shadowExtent);
 };
 
 REGISTER_COMPONENT(LightComponent);

@@ -56,7 +56,21 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
   if (!drawList.empty())
     ensureTransformBuffer(currentFrame, (uint32_t)drawList.size());
 
-  // --- Pass 0: shadow depth ---
+  // --- Pass 0: shadow depth, one layer per dir/spot slot ---
+  for (auto &entry : drawList) {
+    TransformUBO tu{.model = entry.tc->getMatrix()};
+    memcpy((uint8_t *)transformBuffers[currentFrame].mapped +
+               transformStride * entry.index,
+           &tu, sizeof(tu));
+  }
+
+  uint32_t shadowCount = 0;
+  if (shadowBuffers[currentFrame].mapped) {
+    shadowCount = std::min<uint32_t>(
+        reinterpret_cast<ShadowUBO *>(shadowBuffers[currentFrame].mapped)
+            ->count,
+        MAX_SHADOWS);
+  }
   {
     vk::ImageMemoryBarrier2 b{
         .srcStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
@@ -68,7 +82,8 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
         .image = *shadowDepthImage,
         .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
                              .levelCount = 1,
-                             .layerCount = 1}};
+                             .baseArrayLayer = 0,
+                             .layerCount = MAX_SHADOWS}};
     // first frame image is Undefined, not ReadOnly
     static bool firstShadow = true;
     if (firstShadow) {
@@ -80,46 +95,50 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
     cmd.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1,
                                             .pImageMemoryBarriers = &b});
   }
-  for (auto &entry : drawList) {
-    TransformUBO tu{.model = entry.tc->getMatrix()};
-    memcpy((uint8_t *)transformBuffers[currentFrame].mapped +
-               transformStride * entry.index,
-           &tu, sizeof(tu));
-  }
 
-  vk::ClearValue shadowClear = vk::ClearDepthStencilValue(1.0f, 0);
-  vk::RenderingAttachmentInfo shadowDepthAtt{
-      .imageView = *shadowDepthView,
-      .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
-      .loadOp = vk::AttachmentLoadOp::eClear,
-      .storeOp = vk::AttachmentStoreOp::eStore,
-      .clearValue = shadowClear};
-  vk::RenderingInfo shadowInfo{
-      .renderArea = {.offset = {0, 0}, .extent = shadowExtent},
-      .layerCount = 1,
-      .colorAttachmentCount = 0,
-      .pDepthAttachment = &shadowDepthAtt};
-
-  cmd.beginRendering(shadowInfo);
+  cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *shadowPipeline);
   cmd.setViewport(0, vk::Viewport(0.0f, 0.0f, (float)shadowExtent.width,
                                   (float)shadowExtent.height, 0.0f, 1.0f));
   cmd.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), shadowExtent));
   cmd.setDepthBias(1.25f, 0.0f, 1.75f);
-  cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *shadowPipeline);
-  for (auto &entry : drawList) {
-    if (!entry.mc->mesh)
+  vk::ClearValue shadowClear = vk::ClearDepthStencilValue(1.0f, 0);
+  ShadowUBO *shadowUbo =
+      reinterpret_cast<ShadowUBO *>(shadowBuffers[currentFrame].mapped);
+  for (uint32_t slot = 0; slot < shadowCount; ++slot) {
+    // point slots have no 2D layer yet
+    if (shadowUbo && shadowUbo->shadows[slot].dir_type.w > 1.5f)
       continue;
-    auto *mesh = &entry.mc->mesh->mesh;
-    if (mesh->vertexBuffer == nullptr || mesh->indexBuffer == nullptr)
-      continue;
-    uint32_t off = (uint32_t)(transformStride * entry.index);
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0,
-                           {*descriptorSets[currentFrame]}, {off});
-    cmd.bindVertexBuffers(0, {*mesh->vertexBuffer}, {0});
-    cmd.bindIndexBuffer(*mesh->indexBuffer, 0, vk::IndexType::eUint32);
-    cmd.drawIndexed(mesh->indexCount, 1, 0, 0, 0);
+    vk::RenderingAttachmentInfo shadowDepthAtt{
+        .imageView = *shadowLayerViews[slot],
+        .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue = shadowClear};
+    vk::RenderingInfo shadowRenderInfo{
+        .renderArea = {.offset = {0, 0}, .extent = shadowExtent},
+        .layerCount = 1,
+        .colorAttachmentCount = 0,
+        .pDepthAttachment = &shadowDepthAtt};
+
+    cmd.beginRendering(shadowRenderInfo);
+    int layer = (int)slot;
+    cmd.pushConstants(*pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0,
+                      sizeof(layer), &layer);
+    for (auto &entry : drawList) {
+      if (!entry.mc->mesh)
+        continue;
+      auto *mesh = &entry.mc->mesh->mesh;
+      if (mesh->vertexBuffer == nullptr || mesh->indexBuffer == nullptr)
+        continue;
+      uint32_t off = (uint32_t)(transformStride * entry.index);
+      cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout,
+                             0, {*descriptorSets[currentFrame]}, {off});
+      cmd.bindVertexBuffers(0, {*mesh->vertexBuffer}, {0});
+      cmd.bindIndexBuffer(*mesh->indexBuffer, 0, vk::IndexType::eUint32);
+      cmd.drawIndexed(mesh->indexCount, 1, 0, 0, 0);
+    }
+    cmd.endRendering();
   }
-  cmd.endRendering();
 
   vk::ImageMemoryBarrier2 b2{
       .srcStageMask = vk::PipelineStageFlagBits2::eLateFragmentTests,
@@ -131,7 +150,8 @@ void VulkanRenderingContext::recordCommandBuffer(uint32_t imageIndex,
       .image = *shadowDepthImage,
       .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
                            .levelCount = 1,
-                           .layerCount = 1}};
+                           .baseArrayLayer = 0,
+                           .layerCount = MAX_SHADOWS}};
   cmd.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1,
                                           .pImageMemoryBarriers = &b2});
 

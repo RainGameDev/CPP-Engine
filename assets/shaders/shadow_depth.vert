@@ -1,8 +1,19 @@
 #version 450
 
+struct ShadowData {
+    mat4 viewProj;
+    vec4 pos_far;
+    vec4 dir_type;
+};
+
 layout(set = 0, binding = 3) uniform ShadowUBO {
-    mat4 lightViewProj;
+    ShadowData shadows[4];
+    uint count;
 } shadow;
+
+layout(push_constant) uniform ShadowPC {
+    int layer;
+} pc;
 
 layout(set = 0, binding = 1) uniform TransformBufferObject {
     mat4 model;
@@ -15,5 +26,5 @@ layout(location = 3) in vec3 inTangent;
 layout(location = 4) in vec3 inNormal;
 
 void main() {
-    gl_Position = shadow.lightViewProj * transform.model * vec4(inPos, 1.0);
+    gl_Position = shadow.shadows[pc.layer].viewProj * transform.model * vec4(inPos, 1.0);
 }

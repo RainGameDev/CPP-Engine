@@ -76,7 +76,9 @@ public:
   // Shadow map info
   vk::raii::Image shadowDepthImage{nullptr};
   vk::raii::DeviceMemory shadowDepthMemory{nullptr};
-  vk::raii::ImageView shadowDepthView{nullptr};
+  vk::raii::ImageView shadowDepthView{nullptr}; // array view for sampling
+  std::vector<vk::raii::ImageView>
+      shadowLayerViews; // perlayer views for render
   vk::raii::Sampler shadowSampler{nullptr};
   vk::Extent2D shadowExtent{2048, 2048};
   std::array<UboBuffer, maxConcurrentFrames> shadowBuffers;
@@ -108,6 +110,8 @@ public:
   vk::raii::DescriptorSets descriptorSets = nullptr;
 
   TextureAsset defaultWhiteTexture;
+  TextureAsset defaultNormalTexture;
+  TextureAsset defaultRmaosTexture;
   vk::raii::DescriptorSet defaultMaterialDescriptorSet{nullptr};
 
   // Viewport render target

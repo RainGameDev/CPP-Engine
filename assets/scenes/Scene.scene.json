@@ -3,6 +3,7 @@
     {
       "components": {
         "LightComponent": {
+          "castShadow": true,
           "color": [
             1.0,
             1.0,
@@ -12,7 +13,11 @@
           "isEmitting": false,
           "lightType": [
             0
-          ]
+          ],
+          "shadowBias": 0.004999999888241291,
+          "shadowExtent": 20.0,
+          "shadowFar": 96.0,
+          "shadowNear": 0.5
         },
         "NameComponent": {
           "name": "Sun"
@@ -77,26 +82,31 @@
     {
       "components": {
         "LightComponent": {
+          "castShadow": false,
           "color": [
             0.0,
             0.41176486015319824,
             1.0
           ],
-          "intensity": 0.0,
-          "isEmitting": false,
+          "intensity": 1.0,
+          "isEmitting": true,
           "lightType": [
             1,
             16.100000381469727
-          ]
+          ],
+          "shadowBias": 0.004999999888241291,
+          "shadowExtent": 20.0,
+          "shadowFar": 96.0,
+          "shadowNear": 0.5
         },
         "NameComponent": {
           "name": "PointLight"
         },
         "TransformComponent": {
           "position": [
-            -0.721802830696106,
-            2.635362386703491,
-            -5.717503547668457
+            -0.7303458452224731,
+            3.5583443641662598,
+            -8.215391159057617
           ],
           "rotation": [
             0.0,
@@ -116,18 +126,23 @@
     {
       "components": {
         "LightComponent": {
+          "castShadow": true,
           "color": [
             0.05678107216954231,
             0.6813725233078003,
             0.35070645809173584
           ],
-          "intensity": 0.0,
+          "intensity": 1.0,
           "isEmitting": false,
           "lightType": [
             2,
             63.0,
             22.200000762939453
-          ]
+          ],
+          "shadowBias": 0.004999999888241291,
+          "shadowExtent": 20.0,
+          "shadowFar": 96.0,
+          "shadowNear": 0.5
         },
         "NameComponent": {
           "name": "SpotLight"
@@ -135,7 +150,7 @@
         "TransformComponent": {
           "position": [
             -0.004654407501220703,
-            5.16135835647583,
+            12.451889038085938,
             -1.6467621326446533
           ],
           "rotation": [

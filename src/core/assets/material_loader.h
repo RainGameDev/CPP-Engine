@@ -39,8 +39,11 @@ class MaterialLoader : public AssetLoader<MaterialAsset> {
   vk::raii::Queue &queue;
   AssetManager &assetManager;
 
-  // white fallback texture for missing maps
+  // fallback textures for missing maps (white albedo would decode to a
+  // 54-degree tilted normal and full metal, so normal/rmaos get own pixels)
   TextureAsset fallbackTexture;
+  TextureAsset fallbackNormal;
+  TextureAsset fallbackRmaos;
 
 public:
   MaterialLoader(vk::raii::Device &device,
@@ -155,8 +158,8 @@ private:
 
   void writeDescriptors(MaterialAsset &mat) {
     auto &albedo = mat.albedo ? *mat.albedo.get() : fallbackTexture;
-    auto &normal = mat.normal ? *mat.normal.get() : fallbackTexture;
-    auto &rmaos = mat.rmaos ? *mat.rmaos.get() : fallbackTexture;
+    auto &normal = mat.normal ? *mat.normal.get() : fallbackNormal;
+    auto &rmaos = mat.rmaos ? *mat.rmaos.get() : fallbackRmaos;
     auto &heightTex = mat.height ? *mat.height.get() : fallbackTexture;
     auto info = [](TextureAsset &t) {
       return vk::DescriptorImageInfo{
@@ -184,7 +187,14 @@ private:
   }
 
   void createFallbackTexture() {
-    uint32_t pixel = 0xFFFFFFFF;
+    createSolidTexture(fallbackTexture, 0xFFFFFFFF);
+    // flat normal (128,128,255) decodes to (0,0,1) -> geometric normal
+    createSolidTexture(fallbackNormal, 0xFFFF8080);
+    // rmaos (rough=1, metal=0, ao=1): R=255, G=0, B=255
+    createSolidTexture(fallbackRmaos, 0xFFFF00FF);
+  }
+
+  void createSolidTexture(TextureAsset &out, uint32_t pixel) {
     vk::DeviceSize imageSize = sizeof(pixel);
 
     vk::BufferCreateInfo bufInfo{.size = imageSize,
@@ -217,34 +227,34 @@ private:
                                              vk::ImageUsageFlagBits::eTransferDst,
                                     .sharingMode = vk::SharingMode::eExclusive,
                                     .initialLayout = vk::ImageLayout::eUndefined};
-    fallbackTexture.image = vk::raii::Image(device, imageInfo);
+    out.image = vk::raii::Image(device, imageInfo);
 
-    auto imgMemReq = fallbackTexture.image.getMemoryRequirements();
+    auto imgMemReq = out.image.getMemoryRequirements();
     vk::MemoryAllocateInfo imgAllocInfo{
         .allocationSize = imgMemReq.size,
         .memoryTypeIndex =
             findMemoryType(imgMemReq.memoryTypeBits,
                            vk::MemoryPropertyFlagBits::eDeviceLocal)};
-    fallbackTexture.memory = vk::raii::DeviceMemory(device, imgAllocInfo);
-    fallbackTexture.image.bindMemory(*fallbackTexture.memory, 0);
+    out.memory = vk::raii::DeviceMemory(device, imgAllocInfo);
+    out.image.bindMemory(*out.memory, 0);
 
-    transitionImage(fallbackTexture.image, vk::ImageLayout::eUndefined,
+    transitionImage(out.image, vk::ImageLayout::eUndefined,
                     vk::ImageLayout::eTransferDstOptimal);
-    copyBufferToImage(stagingBuf, fallbackTexture.image, 1, 1);
-    transitionImage(fallbackTexture.image, vk::ImageLayout::eTransferDstOptimal,
+    copyBufferToImage(stagingBuf, out.image, 1, 1);
+    transitionImage(out.image, vk::ImageLayout::eTransferDstOptimal,
                     vk::ImageLayout::eShaderReadOnlyOptimal);
 
-    fallbackTexture.imageView = vk::raii::ImageView(
+    out.imageView = vk::raii::ImageView(
         device,
         vk::ImageViewCreateInfo{
-            .image = *fallbackTexture.image,
+            .image = *out.image,
             .viewType = vk::ImageViewType::e2D,
             .format = vk::Format::eR8G8B8A8Srgb,
             .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
                                  .levelCount = 1,
                                  .layerCount = 1}});
 
-    fallbackTexture.sampler = vk::raii::Sampler(
+    out.sampler = vk::raii::Sampler(
         device,
         vk::SamplerCreateInfo{.magFilter = vk::Filter::eNearest,
                               .minFilter = vk::Filter::eNearest,
@@ -252,10 +262,10 @@ private:
                               .addressModeU = vk::SamplerAddressMode::eRepeat,
                               .addressModeV = vk::SamplerAddressMode::eRepeat});
 
-    fallbackTexture.width = 1;
-    fallbackTexture.height = 1;
-    fallbackTexture.mipLevels = 1;
-    fallbackTexture.format = vk::Format::eR8G8B8A8Srgb;
+    out.width = 1;
+    out.height = 1;
+    out.mipLevels = 1;
+    out.format = vk::Format::eR8G8B8A8Srgb;
   }
 
   void transitionImage(vk::raii::Image &image, vk::ImageLayout oldLayout,
