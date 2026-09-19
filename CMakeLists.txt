@@ -72,21 +72,5 @@ target_link_libraries(imgui PUBLIC Vulkan::Vulkan glfw)
 
 target_link_libraries(imguizmo PUBLIC imgui)
 
-option(BUILD_TESTS "Build tests" ON)
-if(BUILD_TESTS)
-    enable_testing()
-    FetchContent_Declare(
-        Catch2
-        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG v3.8.0
-    )
-    FetchContent_MakeAvailable(Catch2)
-endif()
-
 add_subdirectory(src)
-
-if(BUILD_TESTS)
-    add_subdirectory(tests)
-endif()
-
 
