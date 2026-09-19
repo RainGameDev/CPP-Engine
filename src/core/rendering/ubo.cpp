@@ -1,7 +1,9 @@
+#include "rendering/ubo.h"
 #include "glm/ext/vector_float4.hpp"
 #include "rendering/vulkan_render_context.h"
 
 #include "assets/material_loader.h"
+#include "vulkan/vulkan.hpp"
 #include <chrono>
 #include <cstdint>
 #include <glm/ext/matrix_transform.hpp>
@@ -9,9 +11,10 @@
 void VulkanRenderingContext::createUniformBuffers() {
   vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
   for (size_t i = 0; i < maxConcurrentFrames; i++) {
-    uniformBuffers[i].buffer = vk::raii::Buffer(device, {.size = bufferSize,
-                                   .usage = vk::BufferUsageFlagBits::eUniformBuffer,
-                                   .sharingMode = vk::SharingMode::eExclusive});
+    uniformBuffers[i].buffer = vk::raii::Buffer(
+        device, {.size = bufferSize,
+                 .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+                 .sharingMode = vk::SharingMode::eExclusive});
 
     vk::MemoryRequirements memRequirements =
         uniformBuffers[i].buffer.getMemoryRequirements();
@@ -31,9 +34,10 @@ void VulkanRenderingContext::createUniformBuffers() {
 
   vk::DeviceSize transformSize = transformStride;
   for (size_t i = 0; i < maxConcurrentFrames; i++) {
-    transformBuffers[i].buffer = vk::raii::Buffer(device, {.size = transformSize,
-                                   .usage = vk::BufferUsageFlagBits::eUniformBuffer,
-                                   .sharingMode = vk::SharingMode::eExclusive});
+    transformBuffers[i].buffer = vk::raii::Buffer(
+        device, {.size = transformSize,
+                 .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+                 .sharingMode = vk::SharingMode::eExclusive});
 
     vk::MemoryRequirements memRequirements =
         transformBuffers[i].buffer.getMemoryRequirements();
@@ -54,9 +58,10 @@ void VulkanRenderingContext::createUniformBuffers() {
 
   vk::DeviceSize lightSize = sizeof(LightsUBO);
   for (size_t i = 0; i < maxConcurrentFrames; i++) {
-    lightBuffers[i].buffer = vk::raii::Buffer(device, {.size = lightSize,
-                                   .usage = vk::BufferUsageFlagBits::eUniformBuffer,
-                                   .sharingMode = vk::SharingMode::eExclusive});
+    lightBuffers[i].buffer = vk::raii::Buffer(
+        device, {.size = lightSize,
+                 .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+                 .sharingMode = vk::SharingMode::eExclusive});
 
     vk::MemoryRequirements memRequirements =
         lightBuffers[i].buffer.getMemoryRequirements();
@@ -70,30 +75,77 @@ void VulkanRenderingContext::createUniformBuffers() {
 
     lightBuffers[i].memory = vk::raii::DeviceMemory(device, allocInfo);
     lightBuffers[i].buffer.bindMemory(*lightBuffers[i].memory, 0);
-    lightBuffers[i].mapped =
-        lightBuffers[i].memory.mapMemory(0, lightSize);
+    lightBuffers[i].mapped = lightBuffers[i].memory.mapMemory(0, lightSize);
+  }
+
+  vk::DeviceSize shadowSize = sizeof(ShadowUBO);
+  for (size_t i = 0; i < maxConcurrentFrames; i++) {
+    shadowBuffers[i].buffer = vk::raii::Buffer(
+        device, {.size = shadowSize,
+                 .usage = vk::BufferUsageFlagBits::eUniformBuffer,
+                 .sharingMode = vk::SharingMode::eExclusive});
+
+    vk::MemoryRequirements memRequirements =
+        shadowBuffers[i].buffer.getMemoryRequirements();
+
+    vk::MemoryAllocateInfo allocInfo{
+        .allocationSize = memRequirements.size,
+        .memoryTypeIndex =
+            findMemoryType(memRequirements.memoryTypeBits,
+                           vk::MemoryPropertyFlagBits::eHostVisible |
+                               vk::MemoryPropertyFlagBits::eHostCoherent)};
+
+    shadowBuffers[i].memory = vk::raii::DeviceMemory(device, allocInfo);
+    shadowBuffers[i].buffer.bindMemory(*shadowBuffers[i].memory, 0);
+    shadowBuffers[i].mapped = shadowBuffers[i].memory.mapMemory(0, shadowSize);
+  }
+}
+
+void VulkanRenderingContext::updateShadowDescriptors() {
+  for (size_t i = 0; i < maxConcurrentFrames; i++) {
+    vk::DescriptorImageInfo shadowImageInfo{
+        .sampler = *shadowSampler,
+        .imageView = *shadowDepthView,
+        .imageLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal};
+    vk::WriteDescriptorSet write{.dstSet = descriptorSets[i],
+                                 .dstBinding = 4,
+                                 .dstArrayElement = 0,
+                                 .descriptorCount = 1,
+                                 .descriptorType =
+                                     vk::DescriptorType::eCombinedImageSampler,
+                                 .pImageInfo = &shadowImageInfo};
+    device.updateDescriptorSets(write, nullptr);
   }
 }
 
 void VulkanRenderingContext::createDescriptorSetLayout() {
-  std::array<vk::DescriptorSetLayoutBinding, 3> set0Bindings = {{
-       {.binding = 0,
+  std::array<vk::DescriptorSetLayoutBinding, 5> set0Bindings = {
+      {{.binding = 0,
         .descriptorType = vk::DescriptorType::eUniformBuffer,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eVertex |
-                     vk::ShaderStageFlagBits::eFragment,
+                      vk::ShaderStageFlagBits::eFragment,
         .pImmutableSamplers = nullptr},
-      {.binding = 1,
-       .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
-       .descriptorCount = 1,
-       .stageFlags = vk::ShaderStageFlagBits::eVertex,
-       .pImmutableSamplers = nullptr},
-      {.binding = 2,
-       .descriptorType = vk::DescriptorType::eUniformBuffer,
-       .descriptorCount = 1,
-       .stageFlags = vk::ShaderStageFlagBits::eFragment,
-       .pImmutableSamplers = nullptr},
-  }};
+       {.binding = 1,
+        .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eVertex,
+        .pImmutableSamplers = nullptr},
+       {.binding = 2,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment,
+        .pImmutableSamplers = nullptr},
+       {.binding = 3,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eVertex |
+                      vk::ShaderStageFlagBits::eFragment,
+        .pImmutableSamplers = nullptr},
+       {.binding = 4,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment}}};
 
   descriptorSetLayout = device.createDescriptorSetLayout(
       {.bindingCount = static_cast<uint32_t>(set0Bindings.size()),
@@ -145,12 +197,21 @@ void VulkanRenderingContext::createDescriptorSets() {
         .offset = 0,
         .range = transformStride};
 
-    vk::DescriptorBufferInfo lightBufferInfo{
-        .buffer = *lightBuffers[i].buffer,
-        .offset = 0,
-        .range = sizeof(LightsUBO)};
+    vk::DescriptorBufferInfo lightBufferInfo{.buffer = *lightBuffers[i].buffer,
+                                             .offset = 0,
+                                             .range = sizeof(LightsUBO)};
 
-    std::array<vk::WriteDescriptorSet, 3> writes = {{
+    vk::DescriptorBufferInfo shadowBufferInfo{.buffer =
+                                                  *shadowBuffers[i].buffer,
+                                              .offset = 0,
+                                              .range = sizeof(ShadowUBO)};
+
+    vk::DescriptorImageInfo shadowImageInfo{
+        .sampler = *shadowSampler,
+        .imageView = *shadowDepthView,
+        .imageLayout = vk::ImageLayout::eDepthStencilReadOnlyOptimal};
+
+    std::array<vk::WriteDescriptorSet, 5> writes = {{
         {.dstSet = descriptorSets[i],
          .dstBinding = 0,
          .dstArrayElement = 0,
@@ -169,6 +230,19 @@ void VulkanRenderingContext::createDescriptorSets() {
          .descriptorCount = 1,
          .descriptorType = vk::DescriptorType::eUniformBuffer,
          .pBufferInfo = &lightBufferInfo},
+        {.dstSet = descriptorSets[i],
+         .dstBinding = 3,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eUniformBuffer,
+         .pBufferInfo = &shadowBufferInfo},
+        {.dstSet = descriptorSets[i],
+         .dstBinding = 4,
+         .dstArrayElement = 0,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+         .pImageInfo = &shadowImageInfo},
+
     }};
 
     device.updateDescriptorSets(writes, nullptr);
@@ -187,10 +261,10 @@ void VulkanRenderingContext::createDefaultMaterial() {
   auto memReq = stagingBuf.getMemoryRequirements();
   vk::MemoryAllocateInfo stagingAllocInfo{
       .allocationSize = memReq.size,
-      .memoryTypeIndex = findMemoryType(
-          memReq.memoryTypeBits,
-          vk::MemoryPropertyFlagBits::eHostVisible |
-              vk::MemoryPropertyFlagBits::eHostCoherent)};
+      .memoryTypeIndex =
+          findMemoryType(memReq.memoryTypeBits,
+                         vk::MemoryPropertyFlagBits::eHostVisible |
+                             vk::MemoryPropertyFlagBits::eHostCoherent)};
   vk::raii::DeviceMemory stagingMem(device, stagingAllocInfo);
   stagingBuf.bindMemory(*stagingMem, 0);
 
@@ -215,8 +289,7 @@ void VulkanRenderingContext::createDefaultMaterial() {
   vk::MemoryAllocateInfo imgAllocInfo{
       .allocationSize = imgMemReq.size,
       .memoryTypeIndex = findMemoryType(
-          imgMemReq.memoryTypeBits,
-          vk::MemoryPropertyFlagBits::eDeviceLocal)};
+          imgMemReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)};
   defaultWhiteTexture.memory = vk::raii::DeviceMemory(device, imgAllocInfo);
   defaultWhiteTexture.image.bindMemory(*defaultWhiteTexture.memory, 0);
 
@@ -318,5 +391,3 @@ void VulkanRenderingContext::createDefaultMaterial() {
   }
   device.updateDescriptorSets(writes, nullptr);
 }
-
-

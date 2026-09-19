@@ -42,6 +42,15 @@ class ModelLoader : public AssetLoader<MeshAsset> {
     void *lightMapped = nullptr;
     vk::raii::DescriptorPool pool{nullptr};
     vk::raii::DescriptorSets sets{nullptr};
+
+    vk::raii::Buffer shadowBuffer{nullptr};
+    vk::raii::DeviceMemory shadowMemory{nullptr};
+    void *shadowMapped = nullptr;
+    vk::raii::Sampler dummySampler{nullptr};
+    vk::raii::Image dummyImage{nullptr};
+    vk::raii::DeviceMemory dummyMemory{nullptr};
+    vk::raii::ImageView dummyView{nullptr};
+
     VkDescriptorSet set = VK_NULL_HANDLE;
   } previewCamera;
 
@@ -375,9 +384,76 @@ private:
     makeBuffer(previewCamera.lightBuffer, previewCamera.lightMemory,
                previewCamera.lightMapped, sizeof(LightsUBO));
 
-    std::array<vk::DescriptorPoolSize, 2> poolSizes = {
-        vk::DescriptorPoolSize{vk::DescriptorType::eUniformBuffer, 2},
-        vk::DescriptorPoolSize{vk::DescriptorType::eUniformBufferDynamic, 1}};
+    makeBuffer(previewCamera.shadowBuffer, previewCamera.shadowMemory,
+               previewCamera.shadowMapped, sizeof(ShadowUBO));
+    ShadowUBO ident{};
+    ident.lightViewProj = glm::mat4(1.0f);
+    memcpy(previewCamera.shadowMapped, &ident, sizeof(ident));
+
+    previewCamera.dummySampler = vk::raii::Sampler(
+        device, {.magFilter = vk::Filter::eLinear,
+                 .minFilter = vk::Filter::eLinear,
+                 .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+                 .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+                 .addressModeW = vk::SamplerAddressMode::eClampToEdge});
+    previewCamera.dummyImage =
+        vk::raii::Image(device, {.imageType = vk::ImageType::e2D,
+                                 .format = vk::Format::eR8G8B8A8Unorm,
+                                 .extent = {1, 1, 1},
+                                 .mipLevels = 1,
+                                 .arrayLayers = 1,
+                                 .samples = vk::SampleCountFlagBits::e1,
+                                 .tiling = vk::ImageTiling::eOptimal,
+                                 .usage = vk::ImageUsageFlagBits::eSampled,
+                                 .initialLayout = vk::ImageLayout::eUndefined});
+    auto m = previewCamera.dummyImage.getMemoryRequirements();
+    previewCamera.dummyMemory = vk::raii::DeviceMemory(
+        device,
+        {.allocationSize = m.size,
+         .memoryTypeIndex = findMemoryType(
+             m.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)});
+    previewCamera.dummyImage.bindMemory(*previewCamera.dummyMemory, 0);
+    previewCamera.dummyView = vk::raii::ImageView(
+        device,
+        {.image = *previewCamera.dummyImage,
+         .viewType = vk::ImageViewType::e2D,
+         .format = vk::Format::eR8G8B8A8Unorm,
+         .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                              .levelCount = 1,
+                              .layerCount = 1}});
+
+    {
+      vk::CommandBufferBeginInfo bi{
+          .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
+      auto cb = vk::raii::CommandBuffers(
+          device, {.commandPool = *commandPool,
+                   .level = vk::CommandBufferLevel::ePrimary,
+                   .commandBufferCount = 1});
+      auto &c = cb.front();
+      c.begin(bi);
+      vk::ImageMemoryBarrier2 b{
+          .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
+          .dstStageMask = vk::PipelineStageFlagBits2::eFragmentShader,
+          .oldLayout = vk::ImageLayout::eUndefined,
+          .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+          .image = *previewCamera.dummyImage,
+          .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                               .levelCount = 1,
+                               .layerCount = 1}};
+      c.pipelineBarrier2(vk::DependencyInfo{.imageMemoryBarrierCount = 1,
+                                            .pImageMemoryBarriers = &b});
+      c.end();
+      vk::CommandBuffer raw = *c;
+      vk::SubmitInfo s{.commandBufferCount = 1, .pCommandBuffers = &raw};
+      queue.submit(s, nullptr);
+      queue.waitIdle();
+    }
+
+    std::array<vk::DescriptorPoolSize, 3> poolSizes = {
+        vk::DescriptorPoolSize{vk::DescriptorType::eUniformBuffer, 3},
+        vk::DescriptorPoolSize{vk::DescriptorType::eUniformBufferDynamic, 1},
+        vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler, 1}};
+
     previewCamera.pool = device.createDescriptorPool(
         {.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
          .maxSets = 1,
@@ -400,26 +476,40 @@ private:
     vk::DescriptorBufferInfo lightInfo{.buffer = *previewCamera.lightBuffer,
                                        .offset = 0,
                                        .range = sizeof(LightsUBO)};
+    vk::DescriptorBufferInfo shadowInfo{.buffer = *previewCamera.shadowBuffer,
+                                        .offset = 0,
+                                        .range = sizeof(ShadowUBO)};
+    vk::DescriptorImageInfo dummyImageInfo{
+        .sampler = *previewCamera.dummySampler,
+        .imageView = *previewCamera.dummyView,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 
-    std::array<vk::WriteDescriptorSet, 3> writes = {{
+    std::array<vk::WriteDescriptorSet, 5> writes = {{
         {.dstSet = previewCamera.set,
          .dstBinding = 0,
-         .dstArrayElement = 0,
          .descriptorCount = 1,
          .descriptorType = vk::DescriptorType::eUniformBuffer,
          .pBufferInfo = &camInfo},
         {.dstSet = previewCamera.set,
          .dstBinding = 1,
-         .dstArrayElement = 0,
          .descriptorCount = 1,
          .descriptorType = vk::DescriptorType::eUniformBufferDynamic,
          .pBufferInfo = &transformInfo},
         {.dstSet = previewCamera.set,
          .dstBinding = 2,
-         .dstArrayElement = 0,
          .descriptorCount = 1,
          .descriptorType = vk::DescriptorType::eUniformBuffer,
          .pBufferInfo = &lightInfo},
+        {.dstSet = previewCamera.set,
+         .dstBinding = 3,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eUniformBuffer,
+         .pBufferInfo = &shadowInfo},
+        {.dstSet = previewCamera.set,
+         .dstBinding = 4,
+         .descriptorCount = 1,
+         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+         .pImageInfo = &dummyImageInfo},
     }};
     device.updateDescriptorSets(writes, nullptr);
 
@@ -557,12 +647,12 @@ private:
 
     // Per-asset orientation applied as a mesh transform (model space).
     TransformUBO transform{};
-    transform.model = glm::rotate(glm::mat4(1.0f),
-                                  glm::radians(asset.previewPitch),
-                                  glm::vec3(1.0f, 0.0f, 0.0f));
-    transform.model = glm::rotate(transform.model,
-                                  glm::radians(asset.previewYaw),
-                                  glm::vec3(0.0f, 1.0f, 0.0f));
+    transform.model =
+        glm::rotate(glm::mat4(1.0f), glm::radians(asset.previewPitch),
+                    glm::vec3(1.0f, 0.0f, 0.0f));
+    transform.model =
+        glm::rotate(transform.model, glm::radians(asset.previewYaw),
+                    glm::vec3(0.0f, 1.0f, 0.0f));
     memcpy(previewCamera.transformMapped, &transform, sizeof(transform));
 
     MaterialPushConstants pc{};
@@ -607,9 +697,9 @@ private:
           vk::PipelineBindPoint::eGraphics, *previewPipelineLayout, 0,
           {previewCamera.set, *asset.mesh.material->descriptorSet}, {0});
     } else {
-      cmd.bindDescriptorSets(
-          vk::PipelineBindPoint::eGraphics, *previewPipelineLayout, 0,
-          {previewCamera.set, defaultMaterialSet}, {0});
+      cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                             *previewPipelineLayout, 0,
+                             {previewCamera.set, defaultMaterialSet}, {0});
     }
 
     cmd.bindVertexBuffers(0, {*asset.mesh.vertexBuffer}, {0});
@@ -661,7 +751,7 @@ private:
   }
 
   void copyBuffer(const vk::raii::Buffer &srcBuffer,
-                vk::raii::Buffer &dstBuffer, vk::DeviceSize size) {
+                  vk::raii::Buffer &dstBuffer, vk::DeviceSize size) {
     vk::CommandBufferAllocateInfo allocInfo{
         .commandPool = *commandPool,
         .level = vk::CommandBufferLevel::ePrimary,

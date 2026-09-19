@@ -8,12 +8,15 @@ layout(location = 3) in vec3 fragBitangent;
 layout(location = 4) in vec3 fragNormal;
 layout(location = 5) in vec3 fragWorldPos;
 
+layout(location = 6) in vec4 fragLightSpace;
+
 layout(location = 0) out vec4 outColor;
 
 layout(set = 1, binding = 0) uniform sampler2D albedoMap;
 layout(set = 1, binding = 1) uniform sampler2D normalMap;
 layout(set = 1, binding = 2) uniform sampler2D rmaosMap;
 layout(set = 1, binding = 3) uniform sampler2D heightMap;
+layout(set = 0, binding = 4) uniform sampler2D shadowMap;
 
 layout(push_constant) uniform MaterialParams {
     vec4 baseColorFactor;
@@ -99,6 +102,16 @@ vec2 parallaxOcclusionMapping(vec2 texCoords, vec3 viewDir, vec2 dx, vec2 dy) {
     return clamp(mix(currentTexCoords, prevTexCoords, weight), 0.0, 1.0);
 }
 
+
+float shadowFactor() {
+    vec3 proj = fragLightSpace.xyz / fragLightSpace.w;
+    proj.xy = proj.xy * 0.5 + 0.5;
+    if (proj.z > 1.0 || proj.x < 0.0 || proj.x > 1.0 || proj.y < 0.0 || proj.y > 1.0)
+        return 1.0;
+    float closest = texture(shadowMap, proj.xy).r;
+    return (proj.z - 0.005 > closest) ? 0.2 : 1.0;
+}
+
 void main() {
   // Parallax offset
   mat3 TBN = mat3(normalize(fragTangent), normalize(fragBitangent), normalize(fragNormal));
@@ -170,6 +183,7 @@ void main() {
     Lo += (kD * albedo.rgb / PI + specular) * lightColor * intensity * NdotL;
   }
 
+  Lo *= shadowFactor();
   vec3 ambient = vec3(0.03) * albedo.rgb * ao;
 
   if (albedo.a < 0.5) discard;

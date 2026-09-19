@@ -67,16 +67,27 @@ public:
   vk::Extent2D swapChainExtent;
   std::vector<vk::raii::ImageView> swapChainImageViews;
 
+  // Depth map info
   vk::raii::Image depthImage{nullptr};
   vk::raii::DeviceMemory depthImageMemory{nullptr};
   vk::raii::ImageView depthImageView{nullptr};
   vk::Format depthFormat = vk::Format::eD32Sfloat;
+
+  // Shadow map info
+  vk::raii::Image shadowDepthImage{nullptr};
+  vk::raii::DeviceMemory shadowDepthMemory{nullptr};
+  vk::raii::ImageView shadowDepthView{nullptr};
+  vk::raii::Sampler shadowSampler{nullptr};
+  vk::Extent2D shadowExtent{2048, 2048};
+  std::array<UboBuffer, maxConcurrentFrames> shadowBuffers;
 
   vk::raii::PipelineLayout pipelineLayout = nullptr;
 
   std::unordered_map<ShaderKey, std::unique_ptr<vk::raii::Pipeline>,
                      ShaderKeyHash, ShaderKeyEqual>
       graphicsPipelines;
+
+  vk::raii::Pipeline shadowPipeline{nullptr};
 
   vk::raii::CommandPool commandPool = nullptr;
   std::vector<vk::raii::CommandBuffer> commandBuffers;
@@ -139,13 +150,13 @@ public:
       const std::vector<vk::SurfaceFormatKHR> &availableFormats);
   void createImageViews();
   void createDepthResources();
+  void createShadowResources();
   vk::Format findSupportedDepthFormat();
   void createCommandPool();
   void createCommandBuffer();
   void recordCommandBuffer(uint32_t imageIndex, uint32_t currentFrame);
   void transition_image_layout(vk::raii::CommandBuffer &cmd,
-                               uint32_t imageIndex,
-                               vk::ImageLayout old_layout,
+                               uint32_t imageIndex, vk::ImageLayout old_layout,
                                vk::ImageLayout new_layout,
                                vk::AccessFlags2 src_access_mask,
                                vk::AccessFlags2 dst_access_mask,
@@ -162,12 +173,15 @@ public:
   // Viewport
   void createViewportResources(uint32_t width, uint32_t height);
   void cleanupViewportResources();
+  void cleanupShadowResources();
   void recreateViewportIfNeeded();
 
   // Graphics Pipelines
   void createGraphicsPipelineLayout();
   vk::Pipeline getOrCreatePipeline(const ShaderKey &key);
   void createPipelineForKey(const ShaderKey &key);
+
+  void createShadowPipeline();
 
   // Buffers
   void createUniformBuffers();
@@ -180,6 +194,8 @@ public:
   void createIndicatorMesh();
   void ensureTransformBuffer(uint32_t frame, uint32_t meshCount);
   void updateLightBuffer(uint32_t frame);
+  void updateShadowBuffer(uint32_t frame);
+  void updateShadowDescriptors();
   void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                     vk::MemoryPropertyFlags properties,
                     vk::raii::Buffer &buffer,
@@ -192,7 +208,8 @@ public:
   void initImGui();
   void cleanupImGui();
 
-  std::array<VkDescriptorSet, maxConcurrentFrames> getRawDescriptorSets() const {
+  std::array<VkDescriptorSet, maxConcurrentFrames>
+  getRawDescriptorSets() const {
     std::array<VkDescriptorSet, maxConcurrentFrames> result{};
     for (uint32_t i = 0; i < maxConcurrentFrames; ++i) {
       result[i] = static_cast<VkDescriptorSet>(*descriptorSets[i]);

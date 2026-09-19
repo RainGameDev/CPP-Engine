@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -43,7 +44,8 @@ template <typename ThumbnailFn>
 static void drawAssetEntry(EditorStatus &editorState,
                            const IAssetLoader::AssetEntry &entry,
                            AssetDragPayload::Type dragType, float groupHeight,
-                           ThumbnailFn &&drawThumbnail) {
+                           ThumbnailFn &&drawThumbnail,
+                           std::function<void()> onDoubleClick = {}) {
   ImVec2 groupSize(128, groupHeight);
 
   bool isSelected = (editorState.selectedAsset == entry.name);
@@ -51,11 +53,21 @@ static void drawAssetEntry(EditorStatus &editorState,
   ImGui::PushID(entry.name.c_str());
   ImVec2 startPos = ImGui::GetCursorScreenPos();
 
-  if (ImGui::Selectable("##sel", isSelected, ImGuiSelectableFlags_None,
-                        groupSize)) {
+  // base double click
+  bool doubleClicked = false;
+  if (ImGui::Selectable("##sel", isSelected,
+                        ImGuiSelectableFlags_AllowDoubleClick, groupSize)) {
     editorState.selectedAsset = entry.name;
+    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+      doubleClicked = true;
+    }
+  }
+  if (ImGui::IsItemHovered() &&
+      ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    doubleClicked = true;
   }
 
+  // Drag and drop functionality
   if (ImGui::BeginDragDropSource()) {
     AssetDragPayload payload;
     payload.type = dragType;
@@ -69,6 +81,7 @@ static void drawAssetEntry(EditorStatus &editorState,
     ImGui::EndDragDropSource();
   }
 
+  // Icon stuff
   ImGui::SetCursorScreenPos(startPos);
   ImGui::BeginGroup();
   drawThumbnail();
@@ -76,6 +89,21 @@ static void drawAssetEntry(EditorStatus &editorState,
   std::string wrapped = wrapTextManual(entry.name, 128.0f);
   ImGui::TextUnformatted(wrapped.c_str());
   ImGui::EndGroup();
+
+  // Double click fallback based
+  if (doubleClicked == false && onDoubleClick &&
+      ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+      ImGui::IsWindowHovered()) {
+    ImVec2 mousePos = ImGui::GetMousePos();
+    if (mousePos.x >= startPos.x && mousePos.y >= startPos.y &&
+        mousePos.x < startPos.x + groupSize.x &&
+        mousePos.y < startPos.y + groupSize.y) {
+      doubleClicked = true;
+    }
+  }
+  if (doubleClicked && onDoubleClick) {
+    onDoubleClick();
+  }
   ImGui::PopID();
 }
 
@@ -100,6 +128,28 @@ static void drawLabeledThumbnail(const char *label, ImU32 color) {
 
 static void drawPlaceholderThumbnail(const char *label) {
   drawLabeledThumbnail(label, IM_COL32(70, 70, 70, 255));
+}
+
+static void loadSceneAsset(World &world, AssetManager &assetManager,
+                           EditorStatus &editorState,
+                           const std::string &sceneName) {
+  auto *sceneLoader =
+      dynamic_cast<SceneLoader *>(assetManager.getLoader<SceneAsset>());
+  if (sceneLoader == nullptr) {
+    return;
+  }
+  auto *sceneAsset = sceneLoader->tryGetAsset(sceneName);
+  if (sceneAsset == nullptr) {
+    return;
+  }
+  std::ifstream file(sceneAsset->path);
+  if (file.good() == false) {
+    return;
+  }
+  recordUndo(world);
+  restore_world(world, json::parse(file));
+  editorState.selectedID = NONE;
+  editorState.selectedAsset = sceneName;
 }
 
 void assets(World &world) {
@@ -234,15 +284,12 @@ void assets(World &world) {
       } else if (dynamic_cast<const SceneLoader *>(entry->loaderFrom)) {
         drawAssetEntry(
             editorState, *entry, AssetDragPayload::Scene, groupHeight,
-            [=, &assetManager, &world]() {
+            [=, &assetManager, &world, &editorState]() {
               drawLabeledThumbnail("S", IM_COL32(60, 120, 200, 255));
 
               if (ImGui::BeginPopupContextItem("scene_context_menu")) {
                 if (ImGui::MenuItem("Load")) {
-                  auto *sceneLoader = dynamic_cast<SceneLoader *>(
-                      assetManager.getLoader<SceneAsset>());
-                  std::ifstream file(sceneLoader->getAsset(entry->name).path);
-                  restore_world(world, json::parse(file));
+                  loadSceneAsset(world, assetManager, editorState, entry->name);
                 }
                 if (ImGui::MenuItem("Rename")) { /* do something */
                 }
@@ -251,6 +298,9 @@ void assets(World &world) {
                 }
                 ImGui::EndPopup();
               }
+            },
+            [&world, &assetManager, &editorState, entry]() {
+              loadSceneAsset(world, assetManager, editorState, entry->name);
             });
       } else {
         drawAssetEntry(editorState, *entry, AssetDragPayload::None, groupHeight,

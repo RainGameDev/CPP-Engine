@@ -20,8 +20,8 @@ void VulkanRenderingContext::createSyncObjects() {
 }
 
 void VulkanRenderingContext::drawFrame() {
-  auto fenceResult = device.waitForFences(*inFlightFences[currentFrame],
-                                          vk::True, UINT64_MAX);
+  auto fenceResult =
+      device.waitForFences(*inFlightFences[currentFrame], vk::True, UINT64_MAX);
   if (fenceResult != vk::Result::eSuccess) {
     throw std::runtime_error("failed to wait for fence!");
   }
@@ -34,6 +34,7 @@ void VulkanRenderingContext::drawFrame() {
     createSwapChain();
     createImageViews();
     createDepthResources();
+    updateShadowDescriptors();
     updateUniformBuffer(currentFrame % maxConcurrentFrames);
     return;
   }
@@ -54,12 +55,12 @@ void VulkanRenderingContext::drawFrame() {
       .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]};
   queue.submit(submitInfo, *inFlightFences[currentFrame]);
 
-  const vk::PresentInfoKHR presentInfoKHR{.waitSemaphoreCount = 1,
-                                          .pWaitSemaphores =
-                                              &*renderFinishedSemaphores[imageIndex],
-                                          .swapchainCount = 1,
-                                          .pSwapchains = &*swapChain,
-                                          .pImageIndices = &imageIndex};
+  const vk::PresentInfoKHR presentInfoKHR{
+      .waitSemaphoreCount = 1,
+      .pWaitSemaphores = &*renderFinishedSemaphores[imageIndex],
+      .swapchainCount = 1,
+      .pSwapchains = &*swapChain,
+      .pImageIndices = &imageIndex};
 
   result = queue.presentKHR(presentInfoKHR);
 
@@ -69,6 +70,7 @@ void VulkanRenderingContext::drawFrame() {
     createSwapChain();
     createImageViews();
     createDepthResources();
+    updateShadowDescriptors();
     updateUniformBuffer(currentFrame % maxConcurrentFrames);
     currentFrame = (currentFrame + 1) % maxConcurrentFrames;
     return;

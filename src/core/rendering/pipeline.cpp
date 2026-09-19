@@ -139,3 +139,68 @@ void VulkanRenderingContext::createPipelineForKey(const ShaderKey &key) {
   graphicsPipelines[key] =
       std::make_unique<vk::raii::Pipeline>(std::move(pipeline));
 }
+void VulkanRenderingContext::createShadowPipeline() {
+  AssetManager &assetManager = *world->get_resource<AssetManager>();
+  auto *shaders = assetManager.getLoader<ShaderAsset>();
+  auto &vertModule = shaders->getAsset("shadow_depth.vert").module;
+
+  vk::PipelineShaderStageCreateInfo vertStage{
+      .stage = vk::ShaderStageFlagBits::eVertex,
+      .module = vertModule,
+      .pName = "main"};
+
+  std::vector<vk::DynamicState> dynamicStates = {vk::DynamicState::eViewport,
+                                                 vk::DynamicState::eScissor,
+                                                 vk::DynamicState::eDepthBias};
+
+  vk::PipelineDynamicStateCreateInfo dynamicState{
+      .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+      .pDynamicStates = dynamicStates.data()};
+  vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1,
+                                                    .scissorCount = 1};
+  vk::PipelineRasterizationStateCreateInfo rasterizer{
+      .depthClampEnable = vk::False,
+      .rasterizerDiscardEnable = vk::False,
+      .polygonMode = vk::PolygonMode::eFill,
+      .cullMode = vk::CullModeFlagBits::eNone,
+      .frontFace = vk::FrontFace::eCounterClockwise,
+      .depthBiasEnable = vk::True,
+      .lineWidth = 1.0f};
+  vk::PipelineMultisampleStateCreateInfo multisampling{
+      .rasterizationSamples = vk::SampleCountFlagBits::e1};
+  vk::PipelineColorBlendStateCreateInfo colorBlending{.attachmentCount = 0};
+  vk::PipelineInputAssemblyStateCreateInfo inputAssembly{
+      .topology = vk::PrimitiveTopology::eTriangleList};
+  vk::PipelineDepthStencilStateCreateInfo depthStencil{
+      .depthTestEnable = vk::True,
+      .depthWriteEnable = vk::True,
+      .depthCompareOp = vk::CompareOp::eLessOrEqual};
+
+  auto bindingDesc = Vertex::getBindingDescription();
+  auto attribDescs = Vertex::getAttributeDescriptions();
+  vk::PipelineVertexInputStateCreateInfo vertexInputInfo{
+      .vertexBindingDescriptionCount = 1,
+      .pVertexBindingDescriptions = &bindingDesc,
+      .vertexAttributeDescriptionCount =
+          static_cast<uint32_t>(attribDescs.size()),
+      .pVertexAttributeDescriptions = attribDescs.data()};
+
+  vk::StructureChain<vk::GraphicsPipelineCreateInfo,
+                     vk::PipelineRenderingCreateInfo>
+      chain = {
+          {.stageCount = 1,
+           .pStages = &vertStage,
+           .pVertexInputState = &vertexInputInfo,
+           .pInputAssemblyState = &inputAssembly,
+           .pViewportState = &viewportState,
+           .pRasterizationState = &rasterizer,
+           .pMultisampleState = &multisampling,
+           .pDepthStencilState = &depthStencil,
+           .pColorBlendState = &colorBlending,
+           .pDynamicState = &dynamicState,
+           .layout = pipelineLayout},
+          {.colorAttachmentCount = 0, .depthAttachmentFormat = depthFormat}};
+
+  shadowPipeline = vk::raii::Pipeline(
+      device, nullptr, chain.get<vk::GraphicsPipelineCreateInfo>());
+}

@@ -38,3 +38,7 @@ struct UboBuffer {
   vk::raii::DeviceMemory memory{nullptr};
   void *mapped = nullptr;
 };
+
+struct ShadowUBO {
+  glm::mat4 lightViewProj;
+};

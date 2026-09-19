@@ -8,6 +8,8 @@
 #include "ecs/light.h"
 #include "ecs/query.h"
 #include "imgui_impl_vulkan.h"
+#include "rendering/ubo.h"
+#include "vulkan/vulkan.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -25,6 +27,7 @@ void VulkanRenderingContext::init(GLFWwindow *window, World &ecsWorld) {
   createSwapChain();
   createImageViews();
   createDepthResources();
+  createShadowResources();
   createCommandPool();
   createDescriptorSetLayout();
   createDescriptorPool();
@@ -43,6 +46,7 @@ void VulkanRenderingContext::init(GLFWwindow *window, World &ecsWorld) {
 
 void VulkanRenderingContext::cleanup() {
   device.waitIdle();
+  cleanupShadowResources();
   cleanupViewportResources();
   cleanupImGui();
 }
@@ -135,6 +139,34 @@ void VulkanRenderingContext::updateLightBuffer(uint32_t frame) {
   memcpy(lightBuffers[frame].mapped, &lightsubo, sizeof(lightsubo));
 }
 
+void VulkanRenderingContext::updateShadowBuffer(uint32_t frame) {
+  ShadowUBO shadowubo{};
+  shadowubo.lightViewProj = glm::mat4(1.0f);
+
+  glm::vec3 lightPos(10, 20, 10);
+  glm::vec3 lightDir(0, -1, 0);
+  bool found = false;
+  Query<LightComponent, TransformComponent> lightQuery(*world);
+  lightQuery.for_each(
+      [&](EntityId, LightComponent &lc, TransformComponent &tc) {
+        if (found || !std::holds_alternative<Directional>(lc.lightType))
+          return;
+        glm::vec3 fwd = tc.rotation * glm::vec3(0, 0, -1);
+        lightDir = glm::normalize(fwd);
+        lightPos = -lightDir * 40.0f;
+        found = true;
+      });
+
+  glm::vec3 up = fabs(glm::dot(lightDir, glm::vec3(0, 1, 0))) > 0.99f
+                     ? glm::vec3(0, 0, 1)
+                     : glm::vec3(0, 1, 0);
+  glm::mat4 proj = glm::orthoZO(-20.f, 20.f, -20.f, 20.f, 1.f, 96.f);
+  proj[1][1] *= -1;
+  glm::mat4 view = glm::lookAt(lightPos, glm::vec3(0), up);
+  shadowubo.lightViewProj = proj * view;
+
+  memcpy(shadowBuffers[frame].mapped, &shadowubo, sizeof(shadowubo));
+}
 uint32_t
 VulkanRenderingContext::findMemoryType(uint32_t typeFilter,
                                        vk::MemoryPropertyFlags properties) {
@@ -202,6 +234,56 @@ void VulkanRenderingContext::createDepthResources() {
                            .baseArrayLayer = 0,
                            .layerCount = 1}};
   depthImageView = vk::raii::ImageView(device, viewInfo);
+}
+
+void VulkanRenderingContext::createShadowResources() {
+
+  // create image
+  vk::ImageCreateInfo imageInfo{
+      .imageType = vk::ImageType::e2D,
+      .format = depthFormat,
+      .extent = {shadowExtent.width, shadowExtent.height, 1},
+      .mipLevels = 1,
+      .arrayLayers = 1,
+      .samples = vk::SampleCountFlagBits::e1,
+      .tiling = vk::ImageTiling::eOptimal,
+      .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment |
+               vk::ImageUsageFlagBits::eSampled,
+      .sharingMode = vk::SharingMode::eExclusive,
+      .initialLayout = vk::ImageLayout::eUndefined};
+
+  shadowDepthImage = vk::raii::Image(device, imageInfo);
+  auto memReqs = shadowDepthImage.getMemoryRequirements();
+
+  // bind memory
+  vk::MemoryAllocateInfo allocInfo{
+      .allocationSize = memReqs.size,
+      .memoryTypeIndex = findMemoryType(
+          memReqs.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)};
+  shadowDepthMemory = vk::raii::DeviceMemory(device, allocInfo);
+  shadowDepthImage.bindMemory(*shadowDepthMemory, 0);
+
+  // create view
+  vk::ImageViewCreateInfo viewInfo{
+      .image = *shadowDepthImage,
+      .viewType = vk::ImageViewType::e2D,
+      .format = depthFormat,
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
+                           .baseMipLevel = 0,
+                           .levelCount = 1,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1}};
+  shadowDepthView = vk::raii::ImageView(device, viewInfo);
+
+  // create sampler
+  shadowSampler = vk::raii::Sampler(
+      device, {.magFilter = vk::Filter::eNearest,
+               .minFilter = vk::Filter::eNearest,
+               .mipmapMode = vk::SamplerMipmapMode::eNearest,
+               .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+               .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+               .addressModeW = vk::SamplerAddressMode::eClampToEdge,
+               .borderColor = vk::BorderColor::eFloatOpaqueWhite});
 }
 
 void VulkanRenderingContext::createViewportResources(uint32_t width,
@@ -313,6 +395,13 @@ void VulkanRenderingContext::cleanupViewportResources() {
   viewportColorImageMemory = nullptr;
 }
 
+void VulkanRenderingContext::cleanupShadowResources() {
+  shadowSampler = nullptr;
+  shadowDepthView = nullptr;
+  shadowDepthImage = nullptr;
+  shadowDepthMemory = nullptr;
+}
+
 void VulkanRenderingContext::recreateViewportIfNeeded() {
   if (pendingViewportExtent.width != viewportExtent.width ||
       pendingViewportExtent.height != viewportExtent.height) {
@@ -327,15 +416,17 @@ void VulkanRenderingContext::createDescriptorPool() {
 
   std::array<vk::DescriptorPoolSize, 3> poolSizes = {
       vk::DescriptorPoolSize{vk::DescriptorType::eUniformBuffer,
-                             maxConcurrentFrames * 2},
+                             maxConcurrentFrames * 3}, // camera+lights+shadow
       vk::DescriptorPoolSize{vk::DescriptorType::eUniformBufferDynamic,
-                             maxConcurrentFrames},
+                             maxConcurrentFrames}, // transform
       vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler,
-                             maxMaterials * 4}};
+                             maxMaterials * 4 + maxConcurrentFrames + 4}};
+  // 256 mats +2 shadow +4 default white
 
   vk::DescriptorPoolCreateInfo poolInfo{
       .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-      .maxSets = maxConcurrentFrames * 2 + maxMaterials,
+      .maxSets = maxConcurrentFrames + maxMaterials +
+                 2, // 2 set0 +64 +1 default +1 spare = 68
       .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
       .pPoolSizes = poolSizes.data()};
 
