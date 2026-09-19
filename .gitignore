@@ -6,4 +6,5 @@ cmake-build-*/
 *.swo
 *~
 .DS_Store
+*.ini
 compile_commands.json
