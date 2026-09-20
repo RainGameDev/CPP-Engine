@@ -20,6 +20,7 @@ target_link_libraries(core_lib PUBLIC
     imgui
     nlohmann_json::nlohmann_json
     tinyobjloader
+    Jolt
 )
 
 target_compile_definitions(core_lib PUBLIC VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1)

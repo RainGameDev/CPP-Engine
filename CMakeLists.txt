@@ -50,6 +50,32 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tinyobjloader)
 
+# --- JoltPhysics ---
+set(DOUBLE_PRECISION OFF)
+set(GENERATE_DEBUG_SYMBOLS ON)
+set(CROSS_PLATFORM_DETERMINISTIC OFF)
+set(INTERPROCEDURAL_OPTIMIZATION OFF)
+set(CPP_EXCEPTIONS_ENABLED ON)
+set(CPP_RTTI_ENABLED ON)
+set(OBJECT_LAYER_BITS 16)
+set(ENABLE_ALL_WARNINGS OFF)
+set(OVERRIDE_CXX_FLAGS OFF)
+# Disable GPU compute backends.
+set(JPH_USE_DX12 OFF)
+set(JPH_USE_MTL OFF)
+set(JPH_USE_VK OFF)
+set(JPH_USE_CPU_COMPUTE ON)
+set(ENABLE_OBJECT_STREAM ON)
+set(ENABLE_INSTALL OFF)
+
+FetchContent_Declare(
+    JoltPhysics
+    GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
+    GIT_TAG v5.6.0
+    SOURCE_SUBDIR Build
+)
+FetchContent_MakeAvailable(JoltPhysics)
+
 file(GLOB IMGUI_SOURCES
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_demo.cpp

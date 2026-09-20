@@ -6,6 +6,7 @@
 #include "ecs/components.h"
 #include "ecs/input_manager.h"
 #include "ecs/world.h"
+#include "physics/physics_components.h"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -38,6 +39,7 @@ void Application::run() {
   world.add_resource<VulkanRenderingContext *>(&renderer);
 
   world.add_resource<InputManager>();
+  world.add_resource<PhysicsWorld>();
   auto *inputManager = world.get_resource<InputManager>();
   inputManager->window = window;
   inputManager->addKeybind({GLFW_KEY_W, GLFW_REPEAT}, "move_forward", 0);
