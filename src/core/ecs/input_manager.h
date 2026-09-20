@@ -14,16 +14,18 @@ struct Keybinding {
   uint32_t key;
   uint32_t inputType;
   InputDevice device = InputDevice::Keyboard;
+  uint32_t mods = 0;
 
   bool operator==(const Keybinding &other) const {
     return key == other.key && inputType == other.inputType &&
-           device == other.device;
+           device == other.device && mods == other.mods;
   }
   size_t operator()(const Keybinding &k) const {
     auto h1 = std::hash<uint32_t>{}(k.key);
     auto h2 = std::hash<uint32_t>{}(k.inputType);
     auto h3 = std::hash<uint32_t>{}(static_cast<uint32_t>(k.device));
-    return h1 ^ (h2 << 1) ^ (h3 << 2);
+    auto h4 = std::hash<uint32_t>{}(k.mods);
+    return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3);
   }
 };
 struct InputManager {
@@ -43,9 +45,10 @@ public:
   double scrollX = 0.0, scrollY = 0.0;
   bool firstMouse = true;
 
-  /// Binds a keybind
-  void addKeybind(Keybinding keybind, std::string name) {
-    keybindings.insert(std::make_pair(name, keybind));
+  /// Binds a keybind. mods is GLFW_MOD_*
+  void addKeybind(Keybinding keybind, std::string name, uint32_t mods = 0) {
+    keybind.mods = mods;
+    keybindings.insert_or_assign(name, keybind);
     if (keybind.device == InputDevice::Keyboard)
       prevKeyState.try_emplace(keybind.key, false);
     else
@@ -53,11 +56,12 @@ public:
   }
 
   /// Rebinds a keybind if it exists, adds it if it doesnt.
-  void updateKeybind(Keybinding keybind, std::string name) {
+  void updateKeybind(Keybinding keybind, std::string name, uint32_t mods = 0) {
+    keybind.mods = mods;
     if (keybindings.contains(name)) {
       keybindings[name] = keybind;
     } else {
-      addKeybind(keybind, name);
+      addKeybind(keybind, name, mods);
       return;
     }
     if (keybind.device == InputDevice::Keyboard)
@@ -108,6 +112,34 @@ public:
     prevMouseY = mouseY;
   }
 
+  bool areModsActive(uint32_t mods) const {
+    if (mods & GLFW_MOD_SHIFT) {
+      bool down = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                  glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+      if (!down)
+        return false;
+    }
+    if (mods & GLFW_MOD_CONTROL) {
+      bool down = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                  glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+      if (!down)
+        return false;
+    }
+    if (mods & GLFW_MOD_ALT) {
+      bool down = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
+                  glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+      if (!down)
+        return false;
+    }
+    if (mods & GLFW_MOD_SUPER) {
+      bool down = glfwGetKey(window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
+                  glfwGetKey(window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
+      if (!down)
+        return false;
+    }
+    return true;
+  }
+
   /// Is keybind[name] active?
   bool isKeybindActive(std::string name) {
     if (!keybindings.contains(name))
@@ -121,18 +153,29 @@ public:
     auto &releasedList =
         (bind.device == InputDevice::Keyboard) ? keysReleased : mouseReleased;
 
+    bool mainActive = false;
     switch (bind.inputType) {
     case GLFW_PRESS:
-      return std::find(pressedList.begin(), pressedList.end(), bind.key) !=
-             pressedList.end();
+      mainActive = std::find(pressedList.begin(), pressedList.end(),
+                             bind.key) != pressedList.end();
+      break;
     case GLFW_REPEAT:
-      return std::find(heldList.begin(), heldList.end(), bind.key) !=
-             heldList.end();
+      mainActive = std::find(heldList.begin(), heldList.end(), bind.key) !=
+                   heldList.end();
+      break;
     case GLFW_RELEASE:
-      return std::find(releasedList.begin(), releasedList.end(), bind.key) !=
-             releasedList.end();
+      mainActive = std::find(releasedList.begin(), releasedList.end(),
+                             bind.key) != releasedList.end();
+      break;
+    default:
+      return false;
     }
-    return false;
+
+    if (!mainActive)
+      return false;
+    if (bind.mods != 0 && !areModsActive(bind.mods))
+      return false;
+    return true;
   }
 
   glm::vec2 inputVec2(std::string xPos, std::string xNeg, std::string yPos,

@@ -76,6 +76,9 @@ public:
       storage->remove(id);
   }
 
+  /// Creates a new entity with a copy of every registered component from src.
+  EntityId duplicate_entity(EntityId src);
+
   void inspect_entity(EntityId id) {
     for (auto &[_, storage] : currentScene.storages) {
       if (storage->contains(id))

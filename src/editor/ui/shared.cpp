@@ -1,9 +1,14 @@
 #include "ui/shared.h"
 #include "assets/asset_manager.h"
 #include "ecs/components.h"
+#include "ecs/entity.h"
+#include "ecs/input_manager.h"
 #include "ecs/serialize.h"
+#include "ecs/system_registry.h"
 #include "ecs/world.h"
 #include "imgui.h"
+#include "ui/editor.h"
+#include <GLFW/glfw3.h>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -69,3 +74,31 @@ void redoScene(World &world) {
   restore_world(world, redoStack.back());
   redoStack.pop_back();
 }
+
+void editorKeybindInit(World &world) {
+  InputManager *inputManager = world.get_resource<InputManager>();
+  inputManager->addKeybind({GLFW_KEY_DELETE, GLFW_PRESS}, "EditorDelete");
+
+  inputManager->addKeybind({GLFW_KEY_D, GLFW_PRESS}, "EditorDuplicate",
+                           GLFW_MOD_CONTROL);
+}
+STARTUP_SYSTEM(editorKeybindInit);
+
+void selectedEntityUsing(World &world) {
+  EditorStatus *editorState = world.get_resource<EditorStatus>();
+  InputManager *inputManager = world.get_resource<InputManager>();
+
+  if (!editorState || !inputManager || editorState->selectedID == NONE)
+    return;
+  if (inputManager->isKeybindActive("EditorDelete")) {
+    recordUndo(world);
+    world.delete_entity(editorState->selectedID);
+    editorState->selectedID = NONE;
+  } else if (inputManager->isKeybindActive("EditorDuplicate")) {
+    recordUndo(world);
+    EntityId copy = world.duplicate_entity(editorState->selectedID);
+    if (copy != NONE)
+      editorState->selectedID = copy;
+  }
+}
+UPDATE_SYSTEM(selectedEntityUsing);

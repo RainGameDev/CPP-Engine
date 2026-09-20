@@ -24,6 +24,7 @@ public:
     std::function<void(World &, EntityId)> remove_component;
     std::function<bool(World &, EntityId, nlohmann::json &)> save;
     std::function<void(World &, EntityId, const nlohmann::json &)> load;
+    std::function<void(World &, EntityId, EntityId)> copy;
   };
 
   static ComponentRegistry &instance() {
@@ -52,6 +53,11 @@ public:
         return false;
       out = *c;
       return true;
+    };
+
+    entry.copy = [](World &w, EntityId src, EntityId dst) {
+      if (auto *c = w.get_storage<T>().get(src))
+        w.add_component<T>(dst, *c);
     };
     nlohmann::json defaultJson = nlohmann::json(T{});
     entry.load = [defaultJson](World &world, EntityId id,
