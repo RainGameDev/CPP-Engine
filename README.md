@@ -13,6 +13,10 @@ A 2D/3D game engine written in C++23, built for my personal projects. It's free,
 - Asset loading: models (tinyobjloader), images (stb), shaders, and JSON scenes (nlohmann/json)
 - Dependencies fetched via CMake FetchContent, no manual setup for most libraries
 
+## Demo
+
+![demo image](https://github.com/raingamedev/CPP-Engine/images/demo_image.png)
+
 ## Documentation
 
 Documentation for variables, functions, structs, etc. is written inline as doc comments. Full written documentation will follow once features are finalised and their uses are fully known.
