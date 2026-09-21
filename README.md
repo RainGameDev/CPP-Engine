@@ -82,4 +82,4 @@ Contributions are currently not accepted, this is a personal project. This may c
 
 ## License
 
-Free and open-source. See [LICENSE](LICENSE) for the exact terms.
+Released under the [MIT License](LICENSE).
