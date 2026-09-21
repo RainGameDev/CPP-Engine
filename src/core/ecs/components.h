@@ -35,17 +35,12 @@ struct TransformComponent : Component<TransformComponent> {
 
   glm::mat4 getMatrix() const {
     return glm::translate(glm::mat4(1.0f), position) *
-           glm::mat4_cast(rotation) *
-           glm::scale(glm::mat4(1.0f), scale);
+           glm::mat4_cast(rotation) * glm::scale(glm::mat4(1.0f), scale);
   }
 
   void inspect(World &, EntityId id) {
     ImGui::DragFloat3("Position", &position.x, 0.1f);
 
-    // Euler angles are only a one-way "view" for editing. Re-derive them
-    // from the quaternion only when it changed externally (e.g. gizmo or
-    // scene load), never while the user is dragging a field, so the gizmo
-    // and the inspector don't fight over the same value.
     struct CachedRotation {
       glm::quat lastDisplayed{1.0f, 0.0f, 0.0f, 0.0f};
       glm::vec3 euler{0.0f};

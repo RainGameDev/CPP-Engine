@@ -24,20 +24,20 @@
         },
         "TransformComponent": {
           "position": [
-            0.01085781678557396,
+            0.010857817716896534,
             4.019883632659912,
-            0.07493912428617477
+            0.07493911683559418
           ],
           "rotation": [
-            -0.4610210359096527,
+            -0.30038851499557495,
             0.0,
             0.0,
-            0.8873891830444336
+            0.9538169503211975
           ],
           "scale": [
             1.0,
-            0.999975860118866,
-            0.999975860118866
+            0.999975323677063,
+            0.999975323677063
           ]
         }
       },
@@ -45,6 +45,22 @@
     },
     {
       "components": {
+        "ColliderComponent": {
+          "colliderShape": [
+            0,
+            [
+              1.0,
+              1.0,
+              1.0
+            ]
+          ],
+          "isEnabled": true,
+          "offset": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
         "MeshComponent": {
           "mesh": "plate_armor",
           "overrideColor": [
@@ -57,6 +73,15 @@
         },
         "NameComponent": {
           "name": "Mesh"
+        },
+        "RigidyBodyComponent": {
+          "angularDamping": 0.05000000074505806,
+          "friction": 0.20000000298023224,
+          "gravity": -9.8100004196167,
+          "isSensor": false,
+          "linearDamping": 0.05000000074505806,
+          "motionType": 2,
+          "weight": 1.0
         },
         "TransformComponent": {
           "position": [
@@ -80,47 +105,7 @@
       "id": 1
     },
     {
-      "components": {
-        "LightComponent": {
-          "castShadow": false,
-          "color": [
-            0.0,
-            0.41176486015319824,
-            1.0
-          ],
-          "intensity": 1.0,
-          "isEmitting": true,
-          "lightType": [
-            1,
-            16.100000381469727
-          ],
-          "shadowBias": 0.004999999888241291,
-          "shadowExtent": 20.0,
-          "shadowFar": 96.0,
-          "shadowNear": 0.5
-        },
-        "NameComponent": {
-          "name": "PointLight"
-        },
-        "TransformComponent": {
-          "position": [
-            -0.7303458452224731,
-            3.5583443641662598,
-            -8.215391159057617
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
+      "components": {},
       "id": 2
     },
     {

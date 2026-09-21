@@ -5,6 +5,11 @@
 #include <nlohmann/json.hpp>
 
 namespace glm {
+inline void to_json(nlohmann::json &j, const vec2 &v) { j = {v.x, v.y}; }
+inline void from_json(const nlohmann::json &j, vec2 &v) {
+  v.x = j[0];
+  v.y = j[1];
+}
 inline void to_json(nlohmann::json &j, const vec3 &v) { j = {v.x, v.y, v.z}; }
 inline void from_json(const nlohmann::json &j, vec3 &v) {
   v.x = j[0];
