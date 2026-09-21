@@ -15,7 +15,7 @@ A 2D/3D game engine written in C++23, built for my personal projects. It's free,
 
 ## Demo
 
-![demo image](https://github.com/raingamedev/CPP-Engine/images/demo_image.png)
+![demo image](https://github.com/RainGameDev/CPP-Engine/blob/main/images/demo_image.png)
 
 ## Documentation
 
