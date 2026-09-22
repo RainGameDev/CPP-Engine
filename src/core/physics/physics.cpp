@@ -1,6 +1,11 @@
+#include "ecs/components.h"
+#include "ecs/query.h"
+#include "ecs/system_registry.h"
+#include "ecs/world.h"
 #include "physics/physics_components.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <thread>
 
 namespace {
@@ -32,3 +37,14 @@ PhysicsWorld::~PhysicsWorld() {
   delete JPH::Factory::sInstance;
   JPH::Factory::sInstance = nullptr;
 }
+
+void physicsUpdate(World &world,
+                   Query<RigidyBodyComponent, TransformComponent> rigidBodies) {
+  rigidBodies.for_each(
+      [&](EntityId id, RigidyBodyComponent &rb, TransformComponent &tc) {
+        if (rb.motionType != RigidMotionType::Static) {
+        }
+        // physics shit
+      });
+}
+FIXED_UPDATE_SYSTEM(physicsUpdate);
