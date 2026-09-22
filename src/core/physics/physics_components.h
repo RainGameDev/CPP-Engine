@@ -104,6 +104,7 @@ struct PhysicsWorld {
   JPH::JobSystemThreadPool jobSystem;
   JPH::TempAllocatorImpl tempAllocator;
   JPH::PhysicsSystem system;
+  std::unordered_map<EntityId, JPH::BodyID> bodies;
 };
 
 struct Cube {
@@ -179,6 +180,9 @@ inline void from_json(const nlohmann::json &j, ColliderShape &s) {
     break;
   }
 }
+
+// Builds the Jolt shape for a collider. JPH::ShapeRefC
+make_collider_shape(const ColliderShape &shape);
 
 struct ColliderComponent : Component<ColliderComponent> {
 public:
