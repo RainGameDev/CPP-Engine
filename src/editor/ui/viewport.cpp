@@ -1,6 +1,6 @@
 #include "assets/asset_manager.h"
-#include "assets/model_loader.h"
 #include "assets/asset_payload.h"
+#include "assets/model_loader.h"
 #include "ecs/components.h"
 #include "ecs/system_registry.h"
 #include "ecs/world.h"
@@ -11,6 +11,17 @@
 #include "ui/shared.h"
 #include <cstdint>
 #include <glm/glm.hpp>
+
+struct Tool {
+  const char *label;
+  const char *key;
+  ImGuizmo::OPERATION op;
+};
+static const Tool tools[] = {
+    {"Move", "W", ImGuizmo::TRANSLATE},
+    {"Rotate", "E", ImGuizmo::ROTATE},
+    {"Scale", "R", ImGuizmo::SCALE},
+};
 
 static glm::vec3 viewportDropPosition(World &world, ImVec2 rectPos,
                                       ImVec2 rectSize) {
@@ -94,6 +105,55 @@ void viewport(World &world) {
       }
       ImGui::EndDragDropTarget();
     }
+
+    ImGuiStyle &style = ImGui::GetStyle();
+    const float btnH = ImGui::GetFrameHeight();
+    const int n = IM_ARRAYSIZE(tools);
+
+    // Uniform box width from the widest tool label.
+    float labelW = 0.0f;
+    for (auto &t : tools) {
+      float w = ImGui::CalcTextSize(t.label).x;
+      if (w > labelW)
+        labelW = w;
+    }
+    const float btnW = labelW + style.FramePadding.x * 2.0f;
+
+    const float barW = btnW + style.FramePadding.x * 2.0f;
+    const float barH = n * btnH + (n - 1) * style.ItemSpacing.y + 10.0 +
+                       style.FramePadding.y * 2.0f;
+
+    // Left edge of the viewport, near the top.
+    ImVec2 barMin = {imageMin.x + 6.0f, imageMin.y + 9.0f};
+    ImVec2 barMax = {barMin.x + barW, barMin.y + barH};
+
+    status->toolbarRectMin = barMin;
+    status->toolbarRectMax = barMax;
+
+    ImGui::SetCursorScreenPos(barMin);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+    ImGui::BeginChild("##viewportToolbar", {barW, barH},
+                      ImGuiChildFlags_Borders | ImGuiChildFlags_FrameStyle,
+                      ImGuiWindowFlags_NoScrollbar |
+                          ImGuiWindowFlags_NoScrollWithMouse);
+    for (int i = 0; i < n; ++i) {
+      if (i)
+        ImGui::Spacing();
+      bool active = !status->handTool && status->currentOp == tools[i].op;
+      if (active)
+        ImGui::PushStyleColor(ImGuiCol_Button,
+                              ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+      if (ImGui::Button(tools[i].label, {btnW, btnH})) {
+        status->handTool = false;
+        status->currentOp = tools[i].op;
+      }
+      if (active)
+        ImGui::PopStyleColor();
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s (%s)", tools[i].label, tools[i].key);
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
   }
 
   status->isViewportHovered = ImGui::IsWindowHovered();
