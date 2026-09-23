@@ -2,14 +2,15 @@
 #include "ecs/world.h"
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "imgui_vulkan.h"
 #include "ui/editor.h"
 #include "ui/shared.h"
-#include "imgui_vulkan.h"
 #include <GLFW/glfw3.h>
 #include <cstring>
 #include <filesystem>
 
 void topbar(World &world) {
+  EditorStatus *state = world.get_resource<EditorStatus>();
   ImGuiViewport *mainViewport = ImGui::GetMainViewport();
   ImGui::SetNextWindowPos(mainViewport->WorkPos);
   ImGui::SetNextWindowSize(mainViewport->WorkSize);
@@ -49,6 +50,9 @@ void topbar(World &world) {
         openSaveAsPopup = true;
       }
 
+      if (ImGui::MenuItem("Project Settings"))
+        state->isProjectSettingsOpen = true;
+
       ImGui::Separator();
       if (ImGui::MenuItem("Exit")) {
         if (sceneIsEdited(world)) {
@@ -62,6 +66,9 @@ void topbar(World &world) {
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Edit")) {
+      if (ImGui::MenuItem("Preferences"))
+        undoScene(world);
+
       if (ImGui::MenuItem("Undo", "Ctrl+Z"))
         undoScene(world);
       if (ImGui::MenuItem("Redo", "Ctrl+Y"))

@@ -50,24 +50,28 @@ bool assetDropTarget(AssetDragPayload::Type type, AssetManager &assetManager,
   return dropped;
 }
 
-/// Renders a drag and drop field
+/// Renders a drag and drop field. When `contentOffsetX` > 0, the thumbnail
+/// (content) starts that many pixels from the start of the row instead of
+/// right after the label, allowing widgets to be column-aligned.
 template <typename AssetType>
 bool assetDragDropField(const char *label, AssetDragPayload::Type type,
                         AssetManager &assetManager, Handle<AssetType> &handle,
                         float previewSize = 96.0f,
                         const std::function<void(float)> &drawThumbnail = {},
-                        const std::function<void()> &onRemove = {}) {
+                        const std::function<void()> &onRemove = {},
+                        float contentOffsetX = 0.0f) {
   ImGui::PushID(("asset_field_" + std::string(label)).c_str());
 
   ImVec2 labelSize = ImGui::CalcTextSize(label);
   const float labelOffsetY = (previewSize - labelSize.y) * 0.5f;
+  const float contentX =
+      contentOffsetX > 0.0f ? contentOffsetX
+                            : labelSize.x + ImGui::GetStyle().ItemSpacing.x;
 
   ImVec2 rowCursor = ImGui::GetCursorPos();
   ImGui::SetCursorPos(ImVec2(rowCursor.x, rowCursor.y + labelOffsetY));
   ImGui::TextUnformatted(label);
-  ImGui::SetCursorPos(
-      ImVec2(rowCursor.x + labelSize.x + ImGui::GetStyle().ItemSpacing.x,
-             rowCursor.y));
+  ImGui::SetCursorPos(ImVec2(rowCursor.x + contentX, rowCursor.y));
 
   if (drawThumbnail)
     drawThumbnail(previewSize);
