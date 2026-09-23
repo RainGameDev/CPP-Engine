@@ -10,6 +10,7 @@
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
+#include <Jolt/Physics/Collision/Shape/Shape.h>
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -89,6 +90,11 @@ struct JoltAllocatorScope {
   JoltAllocatorScope() { JPH::RegisterDefaultAllocator(); }
 };
 
+struct PhysicsBodyRecord {
+  JPH::BodyID bodyID;
+  std::size_t signature = 0;
+};
+
 // World resource owning the Jolt physics system and everything it borrows.
 struct PhysicsWorld {
   PhysicsWorld(const PhysicsWorld &) = delete;
@@ -104,7 +110,7 @@ struct PhysicsWorld {
   JPH::JobSystemThreadPool jobSystem;
   JPH::TempAllocatorImpl tempAllocator;
   JPH::PhysicsSystem system;
-  std::unordered_map<EntityId, JPH::BodyID> bodies;
+  std::unordered_map<EntityId, PhysicsBodyRecord> bodies;
 };
 
 struct Cube {
@@ -181,8 +187,8 @@ inline void from_json(const nlohmann::json &j, ColliderShape &s) {
   }
 }
 
-// Builds the Jolt shape for a collider. JPH::ShapeRefC
-make_collider_shape(const ColliderShape &shape);
+// Builds the Jolt shape for a collider.
+JPH::ShapeRefC make_collider_shape(const ColliderShape &shape);
 
 struct ColliderComponent : Component<ColliderComponent> {
 public:
@@ -262,6 +268,7 @@ struct RigidyBodyComponent : Component<RigidyBodyComponent> {
 public:
   RigidMotionType motionType{RigidMotionType::Dynamic};
   float friction{0.2f};
+  float restitution{0.0f};
   float weight = 1.0;
   float gravity = -9.81;
   float linearDamping{0.05f};
@@ -281,6 +288,9 @@ public:
                      -std::numeric_limits<float>::infinity(),
                      std::numeric_limits<float>::infinity());
 
+    ImGui::DragFloat("Friction", &friction, 0.01f, 0.0f, 100.0f);
+    ImGui::DragFloat("Restitution", &restitution, 0.01f, 0.0f, 100.0f);
+
     if (motionType != RigidMotionType::Static) {
       ImGui::DragFloat("Gravity", &gravity, 0.1f,
                        -std::numeric_limits<float>::infinity(),
@@ -294,7 +304,7 @@ public:
     }
   }
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(RigidyBodyComponent, motionType, friction,
-                                 weight, gravity, linearDamping, angularDamping,
-                                 isSensor)
+                                 restitution, weight, gravity, linearDamping,
+                                 angularDamping, isSensor)
 };
 REGISTER_COMPONENT(RigidyBodyComponent);
