@@ -39,7 +39,10 @@ void Application::run() {
   world.add_resource<VulkanRenderingContext *>(&renderer);
 
   world.add_resource<InputManager>();
-  world.add_resource<PhysicsWorld>();
+
+  if (!editorMode)
+    world.add_resource<PhysicsWorld>();
+
   auto *inputManager = world.get_resource<InputManager>();
   inputManager->window = window;
   inputManager->addKeybind({GLFW_KEY_W, GLFW_REPEAT}, "move_forward", 0);
@@ -49,8 +52,8 @@ void Application::run() {
   inputManager->addKeybind({GLFW_KEY_SPACE, GLFW_REPEAT}, "move_up", 0);
   inputManager->addKeybind({GLFW_KEY_LEFT_SHIFT, GLFW_REPEAT}, "move_down", 0);
   inputManager->addKeybind(
-      {GLFW_MOUSE_BUTTON_RIGHT, GLFW_REPEAT, InputDevice::Mouse},
-      "camera_hold", 0);
+      {GLFW_MOUSE_BUTTON_RIGHT, GLFW_REPEAT, InputDevice::Mouse}, "camera_hold",
+      0);
   assetManager.addLoader(std::make_unique<ShaderLoader>(renderer.device));
   assetManager.loadDirectory("assets/shaders");
   assetManager.loadDirectory("assets/scenes");
