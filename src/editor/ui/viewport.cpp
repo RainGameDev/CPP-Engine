@@ -81,14 +81,24 @@ void viewport(World &world) {
     return;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-  ImGui::Begin("Viewport", nullptr,
-               ImGuiWindowFlags_NoBackground |
-                   ImGuiWindowFlags_NoBringToFrontOnFocus);
+  bool viewportOpen = ImGui::Begin("Viewport", nullptr,
+                                   ImGuiWindowFlags_NoBackground |
+                                       ImGuiWindowFlags_NoBringToFrontOnFocus);
+  if (!viewportOpen) {
+    // Tabbed behind another window in the same dock nodem nothing to draw.
+    status->isViewportHovered = false;
+    ImGui::End();
+    ImGui::PopStyleVar();
+    return;
+  }
   ImVec2 size = ImGui::GetContentRegionAvail();
+  ImVec2 imageMin{0, 0};
+  ImVec2 imageSize{0, 0};
   if (size.x > 0 && size.y > 0) {
     (*renderer)->pendingViewportExtent = {static_cast<uint32_t>(size.x),
                                           static_cast<uint32_t>(size.y)};
-    ImVec2 imageMin = ImGui::GetCursorScreenPos();
+    imageMin = ImGui::GetCursorScreenPos();
+    imageSize = size;
     ImGui::Image(
         reinterpret_cast<ImTextureID>((*renderer)->viewportDescriptorSet),
         size);
@@ -156,7 +166,11 @@ void viewport(World &world) {
     ImGui::PopStyleVar();
   }
 
-  status->isViewportHovered = ImGui::IsWindowHovered();
+  if (imageSize.x > 0 && imageSize.y > 0)
+    drawViewportGizmos(world, imageMin, imageSize);
+
+  status->isViewportHovered =
+      ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
   ImGui::End();
   ImGui::PopStyleVar();

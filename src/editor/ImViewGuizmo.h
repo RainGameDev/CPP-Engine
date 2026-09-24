@@ -250,10 +250,17 @@ namespace ImViewGuizmo {
     inline bool Rotate(vec3_t& cameraPos, quat_t& cameraRot, const vec3_t& pivot, ImVec2 position, float rotationSpeed ) {
         
         auto& io = ImGui::GetIO();
-        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        // Window drawlist: clipped to the viewport and occluded by any
+        // window stacked/docked over it (never paints on top of them).
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
         auto& ctx = GetContext();
         auto& style = GetStyle();
         bool wasModified = false;
+        // Only interact when the viewport window itself is hovered, unless a
+        // drag/animation with this gizmo is already in progress.
+        const bool viewportHovered =
+            ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+        const bool draggingSelf = (ctx.activeTool == TOOL_GIZMO);
 
         // Animation 
         if (ctx.isAnimating) {
@@ -336,9 +343,10 @@ namespace ImViewGuizmo {
 
         const ImVec2 originScreenPos = worldToScreen(origin);
 
-        // Hover detection 
-        const bool canInteract = !(io.ConfigFlags & ImGuiConfigFlags_NoMouse);
-        if (canInteract && ctx.activeTool == TOOL_NONE && !ctx.isAnimating) {
+        // Hover detection (gated on viewport hover so stacked windows block it)
+        const bool canInteract = !(io.ConfigFlags & ImGuiConfigFlags_NoMouse) &&
+                                 (viewportHovered || draggingSelf);
+        if (viewportHovered && ctx.activeTool == TOOL_NONE && !ctx.isAnimating) {
             ImVec2 mousePos = io.MousePos;
             float distToCenterSq = ImVGLengthSqr(ImVec2(mousePos.x - position.x, mousePos.y - position.y));
 
@@ -505,12 +513,15 @@ namespace ImViewGuizmo {
     inline bool Dolly(vec3_t& cameraPos, const quat_t& cameraRot, const ImVec2 position, const float zoomSpeed) {
         
         const ImGuiIO& io = ImGui::GetIO();
-        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
         auto& ctx = GetContext();
         const Style& style = GetStyle();
         bool wasModified = false;
         
-        const bool canInteract = !(io.ConfigFlags & ImGuiConfigFlags_NoMouse);
+        const bool viewportHovered =
+            ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+        const bool canInteract = !(io.ConfigFlags & ImGuiConfigFlags_NoMouse) &&
+                                 (viewportHovered || ctx.activeTool == TOOL_DOLLY);
         const float radius = style.toolButtonRadius * style.scale;
         const ImVec2 center = { position.x + radius, position.y + radius };
 
@@ -569,12 +580,15 @@ namespace ImViewGuizmo {
     inline bool Pan(vec3_t& cameraPos, const quat_t& cameraRot, const ImVec2 position, const float panSpeed) {
         
         const ImGuiIO& io = ImGui::GetIO();
-        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
         auto& ctx = GetContext();
         const Style& style = GetStyle();
         bool wasModified = false;
 
-        const bool canInteract = !(io.ConfigFlags & ImGuiConfigFlags_NoMouse);
+        const bool viewportHovered =
+            ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+        const bool canInteract = !(io.ConfigFlags & ImGuiConfigFlags_NoMouse) &&
+                                 (viewportHovered || ctx.activeTool == TOOL_PAN);
         const float radius = style.toolButtonRadius * style.scale;
         const ImVec2 center = { position.x + radius, position.y + radius };
 

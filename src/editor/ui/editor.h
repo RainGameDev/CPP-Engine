@@ -13,6 +13,7 @@
 
 class World;
 void topbar(World &world);
+void drawViewportGizmos(World &world, ImVec2 gizmoPos, ImVec2 gizmoSize);
 
 struct EditorStatus {
   EntityId selectedID = NONE;

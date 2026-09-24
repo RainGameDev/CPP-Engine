@@ -28,10 +28,12 @@ void drawLightGizmos(World &world, EditorStatus *status, const glm::mat4 &view,
 static void drawViewGizmo(World &world, const glm::vec3 &pivot, ImVec2 rectPos,
                           ImVec2 rectSize);
 
-void gizmos(World &world) {
+void drawViewportGizmos(World &world, ImVec2 gizmoPos, ImVec2 gizmoSize) {
   auto *status = world.get_resource<EditorStatus>();
   auto *editorCam = world.get_resource<EditorCamera>();
   if (!status || !editorCam)
+    return;
+  if (gizmoSize.x <= 0 || gizmoSize.y <= 0)
     return;
 
   if (ImGui::IsKeyPressed(ImGuiKey_W))
@@ -42,21 +44,11 @@ void gizmos(World &world) {
     status->currentOp = ImGuizmo::SCALE;
 
   ImGuizmo::BeginFrame();
-
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-  ImGui::Begin("Viewport", nullptr,
-               ImGuiWindowFlags_NoBackground |
-                   ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGuizmo::SetAlternativeWindow(ImGui::GetCurrentWindow());
-  ImGuizmo::SetDrawlist(ImGui::GetForegroundDrawList());
+  // Window drawlist so gizmos live inside the viewport.
+  ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
 
-  ImVec2 contentMin = ImGui::GetWindowContentRegionMin();
-  ImVec2 contentMax = ImGui::GetWindowContentRegionMax();
-  ImVec2 gizmoPos(ImGui::GetWindowPos().x + contentMin.x,
-                  ImGui::GetWindowPos().y + contentMin.y);
-  ImVec2 gizmoSize(contentMax.x - contentMin.x, contentMax.y - contentMin.y);
-
-  if (gizmoSize.x > 0 && gizmoSize.y > 0) {
+  {
     float aspect = gizmoSize.x / gizmoSize.y;
     glm::mat4 view = editorCam->cam.getViewMatrix(editorCam->transform);
     glm::mat4 proj = editorCam->cam.getProjectionMatrix(aspect);
@@ -82,8 +74,13 @@ void gizmos(World &world) {
                                          ? ImGuizmo::LOCAL
                                          : ImGuizmo::WORLD;
 
+        bool allowInteract =
+            ImGuizmo::IsUsing() ||
+            ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+        ImGuizmo::Enable(allowInteract);
         ImGuizmo::Manipulate(&view[0][0], &proj[0][0], status->currentOp,
                              currentMode, &model[0][0]);
+        ImGuizmo::Enable(true);
 
         if (ImGuizmo::IsUsing()) {
           glm::vec3 pos, scl, skew;
@@ -97,11 +94,7 @@ void gizmos(World &world) {
       }
     }
   }
-
-  ImGui::End();
-  ImGui::PopStyleVar();
 }
-UPDATE_SYSTEM(gizmos);
 
 static bool worldToScreen(const glm::vec3 &world, const glm::mat4 &viewProj,
                           ImVec2 rectPos, ImVec2 rectSize, ImVec2 &outScreen) {
@@ -149,7 +142,7 @@ static void drawClippedSegment(ImDrawList *drawList, const glm::vec3 &a,
 void drawLightGizmos(World &world, EditorStatus *status, const glm::mat4 &view,
                      const glm::mat4 &proj, ImVec2 rectPos, ImVec2 rectSize) {
   glm::mat4 viewProj = proj * view;
-  ImDrawList *drawList = ImGui::GetForegroundDrawList();
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
   drawList->PushClipRect(
       rectPos, {rectPos.x + rectSize.x, rectPos.y + rectSize.y}, true);
 
@@ -172,7 +165,7 @@ void drawLightGizmos(World &world, EditorStatus *status, const glm::mat4 &view,
       float dist =
           ImLengthSqr(ImVec2(mouse.x - screenPos.x, mouse.y - screenPos.y));
       if (dist < 100.0f && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-          ImGui::IsWindowHovered()) {
+          ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
         status->selectedID = id;
       }
     }
