@@ -164,6 +164,11 @@ void assets(World &world) {
   ImGui::BeginChild("left pane", ImVec2(150, 0), true);
   ImGui::Text("Categories");
   ImGui::Separator();
+
+  ImGui::Checkbox("Show Default", &editorState.showDefaultAssets);
+
+  ImGui::Separator();
+
   if (ImGui::Button("All")) {
     editorState.selectedAssetLoader = nullptr;
   }

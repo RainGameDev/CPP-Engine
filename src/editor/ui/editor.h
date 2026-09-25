@@ -19,6 +19,7 @@ struct EditorStatus {
   EntityId selectedID = NONE;
   IAssetLoader *selectedAssetLoader = nullptr;
   bool isViewportHovered = false;
+  bool showDefaultAssets = false;
   std::string assetSearch;
   std::string selectedAsset;
   std::string hoveredAsset;
