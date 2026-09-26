@@ -1,4 +1,4 @@
-# Engine (name pending)
+# Hallow Engine
 
 A 2D/3D game engine written in C++23, built for my personal projects. It's free, open-source, and runs on Linux and Windows.
 
@@ -15,7 +15,7 @@ A 2D/3D game engine written in C++23, built for my personal projects. It's free,
 
 ## Demo
 
-![demo image](https://github.com/RainGameDev/CPP-Engine/blob/main/images/demo_image.png)
+![demo image](https://github.com/RainGameDev/Hallow-Engine/blob/main/images/demo_image.png)
 
 ## Documentation
 
